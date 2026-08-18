@@ -217,6 +217,19 @@ td.note { color: var(--ink-2); font-size: 12.5px; max-width: 340px; }
 .list.ranked .list-row:nth-child(1) .rank { background: var(--brand); color: #fff; }
 .tier-why { color: var(--ink-3) !important; font-size: 12px !important; margin-top: -4px !important; }
 
+.stamp {
+  display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center;
+  font-size: 12.5px; color: var(--ink-3); margin-bottom: 16px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--line);
+}
+.stamp b { color: var(--ink); font-weight: 600; }
+.pstep-sub { font-size: 10px; color: var(--active-ink); background: var(--active-bg); border-radius: 999px; padding: 1px 6px; }
+.gate-marker {
+  align-self: center; flex: 0 0 auto; writing-mode: vertical-rl; text-orientation: mixed;
+  font-size: 9.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--active-ink); background: var(--active-bg); border-radius: 6px; padding: 6px 3px; cursor: default;
+}
+
 /* the sales & programme development process strip */
 .process { display: flex; gap: 4px; align-items: stretch; overflow-x: auto; padding-bottom: 6px; }
 .pstep {

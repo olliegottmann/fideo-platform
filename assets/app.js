@@ -913,13 +913,10 @@
     var attention = attentionItems();
     var inProgressProjects = projects().filter(function (p) { return /progress/i.test(p.status); });
 
-    var contracting = live.filter(function (d) { return d.stageNum >= 4; });
     var kpis = '<div class="grid kpis">' +
-      kpi('Live deals', String(live.length), deals().length - live.length + ' marked dead or parked', true) +
-      kpi('At contracting or beyond', String(contracting.length), 'steps 7 to 9 of the process') +
-      kpi('Courses in build', String(build.length), ready.length + ' at 10/10 stages · ' + courses().filter(function (c) { return c.name; }).length + ' tracked') +
-      kpi('Due in next 3 months', String(soon.length), late.length + ' already past their target date') +
-      kpi('Projects in progress', String(inProgressProjects.length), projects().length + ' in the register') +
+      kpi('Live clients in the pipeline', String(live.length), deals().length - live.length + ' dead or parked', true) +
+      kpi('Courses being built', String(build.length), courses().filter(function (c) { return c.name; }).length + ' on the tracker') +
+      kpi('Past their target date', String(late.length), 'across sales and build') +
       kpi('Needs attention', String(attention.length), 'blockers, chases and missing owners') +
       '</div>';
 
@@ -952,13 +949,147 @@
         : '<p class="empty">No updates posted yet. Add one from the <a href="#/import">Update data</a> tab.</p>') +
       '</section>';
 
-    return kpis + '<div style="height:16px"></div>' + processCard(live) +
-      '<div style="height:16px"></div>' +
-      '<div class="grid two">' + salesPriorityCard(live, 5) + buildPriorityCard(5) + '</div>' +
-      '<div style="height:16px"></div>' + charts + '<div style="height:16px"></div>' +
-      '<div class="grid two">' + attentionList + upcomingList + '</div>' +
-      '<div style="height:16px"></div>' + updatesCard;
+    /* Deliberately high level. Two separate journeys — selling a programme and
+       building one — then what is most urgent in each. Detail lives on the
+       pages behind these. */
+    return stampLine() +
+      kpis + '<div style="height:16px"></div>' +
+      salesStepsCard(live) + '<div style="height:16px"></div>' +
+      buildStagesCard() + '<div style="height:16px"></div>' +
+      '<div class="grid two">' + highPrioritySalesCard(live) + highPriorityCoursesCard() + '</div>';
   };
+
+  function stampLine() {
+    var gen = state.data.meta && state.data.meta.generatedAt;
+    return '<div class="stamp">' +
+      '<span><b>Last updated</b> ' + esc(gen ? dateLabel(gen) : 'unknown') + '</span>' +
+      '<span>Build tracker as at ' + esc((state.data.courses && state.data.courses.asAt) || 'unknown') + '</span>' +
+      '<span>Sales tracker as at ' + esc((state.data.pipeline && state.data.pipeline.asAt) || 'unknown') + '</span>' +
+      (state.isPreview ? '<span class="chip amber"><span class="glyph">●</span>Unpublished preview</span>' : '') +
+      '</div>';
+  }
+
+  /* --- Overview strip 1: selling a programme (the ten-step sales process) --- */
+  function salesStepsCard(list) {
+    var groups = processGroups(list);
+    var open = state.filters.overviewStep;
+    var tracked = {};
+    Object.keys(STAGE_TO_STEP).forEach(function (k) { tracked[STAGE_TO_STEP[k]] = true; });
+
+    var boxes = groups.filter(function (g) { return !g.step.gate; }).map(function (g) {
+      var n = g.deals.length;
+      var isTracked = !!tracked[g.step.id];
+      var gateBefore = g.step.id === '5' ? 'Gate 1' : (g.step.id === '7' ? 'Gate 2' : '');
+      return (gateBefore ? '<span class="gate-marker" data-tip="' +
+        (gateBefore === 'Gate 1' ? 'Commercial Alignment Checkpoint — agreement to progress to commercial discussions.'
+          : 'Delivery Readiness Checkpoint — internal approval to proceed to proposal and delivery planning.') +
+        '">' + gateBefore + '</span>' : '') +
+        '<button class="pstep' + (open === g.step.id ? ' open' : '') + (isTracked ? (n ? '' : ' vacant') : ' untracked') +
+        '" data-step="' + g.step.id + '" data-tip="' + esc(g.step.detail + ' Led by ' + expandInitials(g.step.lead) + '.' +
+          (isTracked ? '' : ' The sales tracker does not record this step separately.')) + '">' +
+        '<span class="pstep-n">' + esc(g.step.id) + '</span>' +
+        '<span class="pstep-name">' + esc(g.step.name) + '</span>' +
+        '<span class="pstep-count">' + (isTracked ? n : '–') + '</span>' +
+        '</button>';
+    }).join('');
+
+    var panel = '';
+    if (open) {
+      var g2 = groups.filter(function (x) { return x.step.id === open; })[0];
+      if (g2) {
+        panel = '<div class="pstep-panel"><div class="card-head"><h3>' + esc(g2.step.id + '. ' + g2.step.name) + '</h3>' +
+          '<span class="hint">' + esc(g2.step.detail) + '</span></div>' +
+          (g2.deals.length ? '<div class="list">' + g2.deals.map(function (d) {
+            return '<div class="list-row"><div class="lr-main"><a class="lr-title" href="#/pipeline">' + esc(d.client) + '</a>' +
+              '<div class="lr-sub">' + esc(d.vertical) + '</div></div>' +
+              '<div class="lr-side">' + priorityChip(d.priority) + '</div></div>';
+          }).join('') + '</div>' : '<p class="empty">No clients at this step.</p>') + '</div>';
+      }
+    }
+
+    return '<section class="card"><div class="card-head"><h2>Selling a programme</h2>' +
+      '<span class="hint">the ten-step sales process · ' + list.length + ' live clients · click a step for names</span></div>' +
+      '<div class="process">' + boxes + '</div>' + panel +
+      '<p class="hint" style="margin-top:10px">Steps showing “–” are ones the sales tracker does not record separately. ' +
+      'This is the client journey, and is nothing to do with the ten build stages below.</p></section>';
+  }
+
+  /* --- Overview strip 2: building a programme (the ten build stages) --- */
+  function buildStagesCard() {
+    var stages = (state.data.courses.stageNames || []);
+    var list = courses().filter(function (c) { return c.name; });
+    var open = state.filters.overviewStage;
+
+    var at = stages.map(function () { return { active: [], waiting: [] }; });
+    var notStarted = [], complete = [];
+    list.forEach(function (c) {
+      var b = stageBucket(c.steps, c.stagesDone, c.stageCount);
+      if (b.complete) { complete.push(c); return; }
+      if (b.idle) { notStarted.push(c); return; }
+      if (at[b.index]) (b.live ? at[b.index].active : at[b.index].waiting).push(c);
+    });
+
+    var boxes = stages.map(function (name, i) {
+      var a = at[i].active.length, w = at[i].waiting.length, n = a + w;
+      return '<button class="pstep' + (open === String(i) ? ' open' : '') + (n ? '' : ' vacant') +
+        '" data-stage="' + i + '" data-tip="' + esc(name + ' — ' + a + ' in progress, ' + w + ' waiting to start') + '">' +
+        '<span class="pstep-n">' + (i + 1) + '</span>' +
+        '<span class="pstep-name">' + esc(name) + '</span>' +
+        '<span class="pstep-count">' + n + '</span>' +
+        (a ? '<span class="pstep-sub">' + a + ' active</span>' : '') +
+        '</button>';
+    }).join('');
+
+    var panel = '';
+    if (open !== null && open !== undefined && at[+open]) {
+      var g = at[+open];
+      var items = g.active.map(function (c) { return { c: c, live: true }; })
+        .concat(g.waiting.map(function (c) { return { c: c, live: false }; }));
+      panel = '<div class="pstep-panel"><div class="card-head"><h3>' + esc((+open + 1) + '. ' + stages[+open]) + '</h3>' +
+        '<span class="hint">' + g.active.length + ' in progress · ' + g.waiting.length + ' waiting to start</span></div>' +
+        (items.length ? '<div class="list">' + items.map(function (x) {
+          return '<div class="list-row"><div class="lr-main"><a class="lr-title" href="#/courses">' + esc(x.c.name) + '</a>' +
+            '<div class="lr-sub">' + esc(x.c.owner ? 'Owner: ' + x.c.owner : 'No owner named') + '</div></div>' +
+            '<div class="lr-side">' + (x.live ? chip('active', 'In progress', '▶') : chip('wait', 'Waiting', '○')) +
+            ' ' + targetChip(x.c.target, x.c.targetSort, x.c.provisional) + '</div></div>';
+        }).join('') + '</div>' : '<p class="empty">No courses at this stage.</p>') + '</div>';
+    }
+
+    return '<section class="card"><div class="card-head"><h2>Building a programme</h2>' +
+      '<span class="hint">the ten build stages · ' + list.length + ' courses · click a stage for names</span></div>' +
+      '<div class="process">' + boxes + '</div>' + panel +
+      '<div class="legend" style="margin-top:12px">' +
+      '<span><b>' + notStarted.length + '</b> not started</span>' +
+      '<span><b>' + complete.length + '</b> all ten stages complete</span>' +
+      '<span>A course counts once, at the stage it is currently on.</span>' +
+      '</div></section>';
+  }
+
+  function highPrioritySalesCard(live) {
+    var high = live.filter(function (d) { return String(d.priority).toUpperCase() === 'HIGH'; });
+    var ranked = salesRanking(high).slice(0, 8);
+    return '<section class="card"><div class="card-head"><h2>High priority sales</h2>' +
+      '<a class="hint" href="#/pipeline">All ' + high.length + ' →</a></div>' +
+      (ranked.length ? '<div class="list ranked">' + ranked.map(function (r, i) {
+        return '<div class="list-row"><span class="rank">' + (i + 1) + '</span><div class="lr-main">' +
+          '<div class="lr-title">' + esc(r.deal.client) + '</div>' +
+          '<div class="lr-sub">' + esc(r.deal.stageLabel || r.deal.stage) + '</div></div>' +
+          '<div class="lr-side">' + targetChip(r.deal.target, r.deal.targetSort) + '</div></div>';
+      }).join('') + '</div>' : '<p class="empty">Nothing marked High.</p>') + '</section>';
+  }
+
+  function highPriorityCoursesCard() {
+    var high = courses().filter(function (c) { return c.name && c.priority === 'HIGH' && c.progress < 100; });
+    var ranked = buildRanking(high, liveDeals()).slice(0, 8);
+    return '<section class="card"><div class="card-head"><h2>High priority course builds</h2>' +
+      '<a class="hint" href="#/courses">All ' + high.length + ' →</a></div>' +
+      (ranked.length ? '<div class="list ranked">' + ranked.map(function (r, i) {
+        return '<div class="list-row"><span class="rank">' + (i + 1) + '</span><div class="lr-main">' +
+          '<div class="lr-title">' + esc(r.course.name) + '</div>' +
+          '<div class="lr-sub">' + esc(r.course.currentStage) + '</div></div>' +
+          '<div class="lr-side">' + targetChip(r.course.target, r.course.targetSort, r.course.provisional) + '</div></div>';
+      }).join('') + '</div>' : '<p class="empty">Nothing marked High.</p>') + '</section>';
+  }
 
   function kpi(label, value, foot, accent) {
     return '<div class="kpi' + (accent ? ' accent' : '') + '">' +
@@ -1741,9 +1872,15 @@
     $$('.pstep', main).forEach(function (btn) {
       btn.addEventListener('click', function () {
         var id = btn.getAttribute('data-step');
-        state.filters.overviewStep = state.filters.overviewStep === id ? null : id;
+        var stage = btn.getAttribute('data-stage');
+        if (id !== null && id !== undefined) {
+          state.filters.overviewStep = state.filters.overviewStep === id ? null : id;
+        } else if (stage !== null && stage !== undefined) {
+          state.filters.overviewStage = state.filters.overviewStage === stage ? null : stage;
+        }
         render();
-        var again = $('.pstep[data-step="' + id + '"]');
+        var sel = id != null ? '.pstep[data-step="' + id + '"]' : '.pstep[data-stage="' + stage + '"]';
+        var again = $(sel);
         if (again) again.focus();
       });
     });
