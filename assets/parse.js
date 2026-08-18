@@ -146,14 +146,14 @@
       var note = S(row[lastCol]);
       if (note === '—') note = '';
       var target = parseTarget(row[lastCol - 1]);
-      var current = 'Not started';
-      for (var a = 0; a < steps.length; a++) { if (steps[a].key === 'active') { current = steps[a].name; break; } }
-      if (current === 'Not started') {
-        current = done === steps.length && done > 0 ? 'Complete' : null;
-        if (!current) {
-          for (var b = 0; b < steps.length; b++) { if (steps[b].key !== 'done') { current = 'Next: ' + steps[b].name; break; } }
-        }
+      var current = null;
+      for (var a = 0; a < steps.length; a++) { if (steps[a].key === 'active') { current = 'In progress: ' + steps[a].name; break; } }
+      if (!current && done > 0 && done === steps.length) current = 'All stages complete';
+      if (!current && steps.every(function (s) { return s.key === 'none'; })) current = 'Not started';
+      if (!current) {
+        for (var b = 0; b < steps.length; b++) { if (steps[b].key !== 'done') { current = 'Next up: ' + steps[b].name; break; } }
       }
+      if (!current) current = 'Not started';
       items.push({
         name: title,
         priority: S(row[1]).toUpperCase() || 'UNSET',

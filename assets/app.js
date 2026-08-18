@@ -57,6 +57,18 @@
     if (!label) return '';
     return '<span class="chip ' + kind + '">' + (glyph ? '<span class="glyph" aria-hidden="true">' + glyph + '</span>' : '') + esc(label) + '</span>';
   }
+  /* Sort order (0 = first) and urgency weight. Written as explicit lookups because
+     `weights[p] || fallback` silently swallows a legitimate 0. */
+  function priorityRank(p) {
+    var m = { HIGH: 0, MEDIUM: 1, LOW: 2, MONITOR: 2, UNSET: 3, DEAD: 4 };
+    var k = String(p || '').toUpperCase();
+    return k in m ? m[k] : 3;
+  }
+  function priorityUrgency(p) {
+    var m = { HIGH: 3, MEDIUM: 2, LOW: 1, MONITOR: 1, UNSET: 1, DEAD: 0 };
+    var k = String(p || '').toUpperCase();
+    return k in m ? m[k] : 1;
+  }
   function priorityChip(p) {
     var t = String(p || '').toUpperCase();
     if (!t || t === 'UNSET') return '';
@@ -170,7 +182,6 @@
   /* Everything that looks like it needs a human this week. */
   function attentionItems() {
     var out = [];
-    var priWeight = { HIGH: 3, MEDIUM: 2, LOW: 1, MONITOR: 1, DEAD: 0, UNSET: 1 };
 
     courses().forEach(function (c) {
       if (!c.name) return;
@@ -180,7 +191,7 @@
       out.push({
         source: 'Course build', route: '#/courses', title: c.name, why: why,
         side: c.stagesDone + '/' + c.stageCount + ' stages',
-        weight: (isOverdue(c.targetSort) ? 10 : 0) + (priWeight[c.priority] || 1) * 2, key: c.targetSort
+        weight: (isOverdue(c.targetSort) ? 10 : 0) + priorityUrgency(c.priority) * 2, key: c.targetSort
       });
     });
 
@@ -192,7 +203,7 @@
       out.push({
         source: 'Pipeline', route: '#/pipeline', title: d.client, why: why,
         side: d.stageLabel || d.stage,
-        weight: (isOverdue(d.targetSort) ? 8 : 0) + (priWeight[String(d.priority).toUpperCase()] || 1) * 2 + (d.stageNum || 0), key: d.targetSort
+        weight: (isOverdue(d.targetSort) ? 8 : 0) + priorityUrgency(d.priority) * 2 + (d.stageNum || 0), key: d.targetSort
       });
     });
 
@@ -467,8 +478,7 @@
       if (f.q && (c.name + ' ' + c.notes + ' ' + c.owner).toLowerCase().indexOf(f.q.toLowerCase()) === -1) return false;
       return true;
     }).sort(function (a, b) {
-      var pw = { HIGH: 0, MEDIUM: 1, LOW: 2, UNSET: 3 };
-      return (pw[a.priority] || 3) - (pw[b.priority] || 3) ||
+      return priorityRank(a.priority) - priorityRank(b.priority) ||
         (a.targetSort || 999999) - (b.targetSort || 999999) || b.progress - a.progress;
     });
 
@@ -495,7 +505,7 @@
       return '<article class="item' + (attention ? ' attention' : '') + '">' +
         '<div class="item-head"><h3>' + esc(c.name) + '</h3><div class="chips">' + priorityChip(c.priority) + '</div></div>' +
         '<div class="chips">' + targetChip(c.target, c.targetSort, c.provisional) +
-        chip('ghost', 'Now: ' + c.currentStage) + (c.owner ? chip('ghost', 'Owner: ' + c.owner) : '') + '</div>' +
+        chip('ghost', c.currentStage) + (c.owner ? chip('ghost', 'Owner: ' + c.owner) : '') + '</div>' +
         stepStrip(c.steps) +
         progressBar(c.progress, c.stagesDone + '/' + c.stageCount + ' stages complete') +
         (c.notes ? '<p class="note">' + esc(c.notes) + '</p>' : '') +
@@ -672,16 +682,26 @@
   }
 
   var sheetJsPromise = null;
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src;
+      s.onload = resolve;
+      s.onerror = function () { reject(new Error('failed: ' + src)); };
+      document.head.appendChild(s);
+    });
+  }
+  /* The .xlsx reader ships with the site so it works offline; the CDN is only a
+     fallback for deployments where the vendor folder was not uploaded. */
   function loadSheetJS() {
     if (window.XLSX) return Promise.resolve(window.XLSX);
     if (sheetJsPromise) return sheetJsPromise;
-    sheetJsPromise = new Promise(function (resolve, reject) {
-      var s = document.createElement('script');
-      s.src = 'assets/vendor/xlsx.full.min.js';
-      s.onload = function () { resolve(window.XLSX); };
-      s.onerror = function () { reject(new Error('Could not load the spreadsheet reader.')); };
-      document.head.appendChild(s);
-    });
+    sheetJsPromise = loadScript('assets/vendor/xlsx.full.min.js')
+      .catch(function () { return loadScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'); })
+      .then(function () {
+        if (!window.XLSX) throw new Error('Could not load the spreadsheet reader.');
+        return window.XLSX;
+      });
     return sheetJsPromise;
   }
 
