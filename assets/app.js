@@ -240,6 +240,81 @@
     return out.sort(function (a, b) { return a.key - b.key; });
   }
 
+  /* ---------- the Fideo sales & programme development process ----------
+     The twelve boxes from the process diagram: ten numbered steps plus the two
+     gates. The trackers only record a six-stage pipeline, so each deal is placed
+     on the step its tracker stage implies — see STAGE_TO_STEP. That mapping is
+     an interpretation, not something the spreadsheet states; it is shown on the
+     page so anyone can challenge it. */
+  var PROCESS = [
+    { id: '1', name: 'Initial Engagement', detail: 'Opportunity spotting, introductions and referrals.', lead: 'ALL' },
+    { id: '2', name: 'Qualification', detail: 'Validate opportunity and confirm potential fit and priorities.', lead: 'OG' },
+    { id: '3', name: 'Discovery & TNA', detail: 'Understand the client environment, needs and capability gaps.', lead: 'AQ' },
+    { id: '4', name: 'Discovery Summary', detail: 'Summarise findings, learning objectives and indicative approaches.', lead: 'AQ' },
+    { id: 'G1', name: 'Commercial Alignment', detail: 'Gate: agreement to progress to commercial discussions.', lead: 'OG', gate: true },
+    { id: '5', name: 'Commercial Scoping & Budget', detail: 'Agree scope, budget parameters, timelines and delivery preferences.', lead: 'OG' },
+    { id: '6', name: 'Solution Design', detail: 'Design the detailed solution aligned to agreed commercial parameters.', lead: 'AQ' },
+    { id: 'G2', name: 'Delivery Readiness', detail: 'Gate: internal approval to proceed to proposal and delivery planning.', lead: 'OG', gate: true },
+    { id: '7', name: 'Final Proposal & Contracting', detail: 'Final proposal, commercial agreement and signed contract.', lead: 'OG' },
+    { id: '8', name: 'Programme Build & Setup', detail: 'Build and configure the programme and prepare for launch.', lead: 'AQ' },
+    { id: '9', name: 'Programme Delivery', detail: 'Deliver the programme and provide ongoing learner support.', lead: 'AQ' },
+    { id: '10', name: 'Review & Future Opportunities', detail: 'Review performance, share insights and identify future opportunities.', lead: 'AQ, OG' }
+  ];
+  /* tracker pipeline stage -> process step */
+  var STAGE_TO_STEP = { 1: '1', 2: '3', 3: '5', 4: '7', 5: '8', 6: '9' };
+
+  function processGroups(list) {
+    var byStep = {};
+    PROCESS.forEach(function (p) { byStep[p.id] = []; });
+    list.forEach(function (d) {
+      var id = STAGE_TO_STEP[d.stageNum];
+      if (id && byStep[id]) byStep[id].push(d);
+    });
+    return PROCESS.map(function (p) { return { step: p, deals: byStep[p.id] }; });
+  }
+
+  function processCard(list) {
+    var groups = processGroups(list);
+    var open = state.filters.overviewStep;
+    var boxes = groups.map(function (g) {
+      var n = g.deals.length;
+      return '<button class="pstep' + (g.step.gate ? ' gate' : '') + (open === g.step.id ? ' open' : '') +
+        (n ? '' : ' vacant') + '" data-step="' + g.step.id + '" data-tip="' + esc(g.step.detail + ' · Lead: ' + g.step.lead) + '"' +
+        ' aria-expanded="' + (open === g.step.id) + '">' +
+        '<span class="pstep-n">' + (g.step.gate ? '★ ' + g.step.id : g.step.id) + '</span>' +
+        '<span class="pstep-name">' + esc(g.step.name) + '</span>' +
+        '<span class="pstep-count">' + n + '</span>' +
+        '</button>';
+    }).join('<span class="pstep-arrow" aria-hidden="true">›</span>');
+
+    var panel = '';
+    if (open) {
+      var g = groups.filter(function (x) { return x.step.id === open; })[0];
+      if (g) {
+        panel = '<div class="pstep-panel"><div class="card-head"><h3>' +
+          (g.step.gate ? 'Gate — ' : g.step.id + '. ') + esc(g.step.name) + '</h3>' +
+          '<span class="hint">' + esc(g.step.detail) + ' · Lead: ' + esc(g.step.lead) + '</span></div>' +
+          (g.deals.length
+            ? '<div class="list">' + g.deals.map(function (d) {
+              return '<div class="list-row"><div class="lr-main">' +
+                '<a class="lr-title" href="#/pipeline">' + esc(d.client) + '</a>' +
+                '<div class="lr-sub">' + esc(d.vertical) + (d.notes ? ' — ' + esc(d.notes) : '') + '</div></div>' +
+                '<div class="lr-side">' + priorityChip(d.priority) + ' ' + targetChip(d.target, d.targetSort) + '</div></div>';
+            }).join('') + '</div>'
+            : '<p class="empty">No clients sitting at this step.</p>') +
+          '</div>';
+      }
+    }
+
+    return '<section class="card"><div class="card-head"><h2>Sales &amp; programme development process</h2>' +
+      '<span class="hint">click a step to see who is there</span></div>' +
+      '<div class="process">' + boxes + '</div>' + panel +
+      '<p class="hint" style="margin-top:12px">Placed from each deal’s tracker stage: ' +
+      'Lead&nbsp;→&nbsp;1, Scoping&nbsp;→&nbsp;3, Proposal&nbsp;→&nbsp;5, Contracting&nbsp;→&nbsp;7, Contracted&nbsp;→&nbsp;8, Live&nbsp;→&nbsp;9. ' +
+      'The tracker records six stages, so the steps in between are inferred rather than recorded.</p>' +
+      '</section>';
+  }
+
   /* ---------- charts ---------- */
   function barChart(rows, opts) {
     opts = opts || {};
@@ -259,29 +334,27 @@
         label: (s.stageNum ? s.stageNum + '. ' : '') + s.name,
         value: s.count,
         valueLabel: s.count + (s.count === 1 ? ' deal' : ' deals'),
-        subLabel: s.revenue ? moneyShort(s.revenue) : '',
         color: RAMP[Math.max(0, Math.min(5, (s.stageNum || 1) - 1))],
         tip: s.clients.slice(0, 6).join(', ') + (s.clients.length > 6 ? ' +' + (s.clients.length - 6) + ' more' : '')
       };
     });
     if (!rows.length) return '';
     return '<section class="card"><div class="card-head"><h2>' + esc(title) + '</h2>' +
-      '<span class="hint">bar = number of deals · € = quantified revenue</span></div>' +
+      '<span class="hint">hover a bar for the client names</span></div>' +
       barChart(rows) + '</section>';
   }
 
   function verticalCard(list) {
-    var rows = byVertical(list).slice(0, 7).map(function (v) {
+    var rows = byVertical(list).sort(function (a, b) { return b.count - a.count; }).slice(0, 8).map(function (v) {
       return {
-        label: v.name, value: v.revenue,
-        valueLabel: v.revenue ? moneyShort(v.revenue) : '—',
-        subLabel: v.count + (v.count === 1 ? ' deal' : ' deals'),
-        tip: v.name + ': ' + money(v.revenue) + ' across ' + v.count + ' deal(s)'
+        label: v.name, value: v.count,
+        valueLabel: v.count + (v.count === 1 ? ' deal' : ' deals'),
+        tip: v.name + ': ' + v.count + ' deal(s)'
       };
     });
     if (!rows.length) return '';
-    return '<section class="card"><div class="card-head"><h2>Quantified revenue by vertical</h2>' +
-      '<span class="hint">top 7 · deals with no € figure are not shown</span></div>' +
+    return '<section class="card"><div class="card-head"><h2>Deals by vertical</h2>' +
+      '<span class="hint">where the conversations are</span></div>' +
       barChart(rows) + '</section>';
   }
 
@@ -290,7 +363,6 @@
 
   views.overview = function () {
     var live = liveDeals();
-    var withRev = live.filter(function (d) { return d.revenue != null; });
     var build = coursesInBuild();
     var ready = courses().filter(function (c) { return c.progress === 100; });
     var soon = upcoming().filter(function (u) { var m = monthsFromNow(u.key); return m !== null && m >= 0 && m <= 3; });
@@ -298,16 +370,17 @@
     var attention = attentionItems();
     var inProgressProjects = projects().filter(function (p) { return /progress/i.test(p.status); });
 
+    var contracting = live.filter(function (d) { return d.stageNum >= 4; });
     var kpis = '<div class="grid kpis">' +
-      kpi('Quantified pipeline', moneyShort(quantified(live)), withRev.length + ' of ' + live.length + ' live deals carry a € figure', true) +
-      kpi('Live deals', String(live.length), deals().length - live.length + ' marked dead or parked') +
+      kpi('Live deals', String(live.length), deals().length - live.length + ' marked dead or parked', true) +
+      kpi('At contracting or beyond', String(contracting.length), 'steps 7 to 9 of the process') +
       kpi('Courses in build', String(build.length), ready.length + ' at 10/10 stages · ' + courses().filter(function (c) { return c.name; }).length + ' tracked') +
       kpi('Due in next 3 months', String(soon.length), late.length + ' already past their target date') +
       kpi('Projects in progress', String(inProgressProjects.length), projects().length + ' in the register') +
       kpi('Needs attention', String(attention.length), 'blockers, chases and missing owners') +
       '</div>';
 
-    var charts = '<div class="grid two">' + funnelCard(live, 'Pipeline by stage') + verticalCard(live) + '</div>';
+    var charts = '<div class="grid two">' + funnelCard(live, 'Deals by pipeline stage') + verticalCard(live) + '</div>';
 
     var attentionList = '<section class="card"><div class="card-head"><h2>Needs attention</h2>' +
       '<span class="hint">' + attention.length + ' items</span></div>' +
@@ -336,7 +409,8 @@
         : '<p class="empty">No updates posted yet. Add one from the <a href="#/import">Update data</a> tab.</p>') +
       '</section>';
 
-    return kpis + '<div style="height:16px"></div>' + charts + '<div style="height:16px"></div>' +
+    return kpis + '<div style="height:16px"></div>' + processCard(live) +
+      '<div style="height:16px"></div>' + charts + '<div style="height:16px"></div>' +
       '<div class="grid two">' + attentionList + upcomingList + '</div>' +
       '<div style="height:16px"></div>' + updatesCard;
   };
@@ -371,22 +445,13 @@
       return (va - vb) * sort.dir;
     });
 
-    var stated = state.data.pipeline.statedTotal;
-    var computed = quantified(list);
     var banner = '';
-    if (stated && !f.q && !f.stage && !f.priority && !f.vertical && Math.abs(stated - quantified(all)) > 1) {
-      banner = '<div class="banner"><span aria-hidden="true">⚠</span><div><b>Revenue figures do not reconcile.</b> ' +
-        'The deal rows below add up to <b>' + money(quantified(all)) + '</b>, but the Funnel Summary sheet states <b>' + money(stated) + '</b>. ' +
-        'The gap is deals whose value is written in the summary or the notes but not in the “Annual Rev” column ' +
-        '(AML Intelligence, W3GRC and Bespoke Training are the big ones). Fill that column in and the two will agree.</div></div>';
-    }
-
     var filters = '<div class="filters">' +
       '<input type="search" id="fq" placeholder="Search client, vertical or notes…" value="' + esc(f.q) + '" aria-label="Search deals">' +
       select('fstage', 'All stages', uniqStages(all), f.stage) +
       select('fpriority', 'All priorities', uniq(all.map(function (d) { return d.priority; })).map(function (p) { return { value: p, label: p }; }), f.priority) +
       select('fvertical', 'All verticals', uniq(all.map(function (d) { return d.vertical; })).sort().map(function (v) { return { value: v, label: v }; }), f.vertical) +
-      '<span class="result-count">' + list.length + ' of ' + all.length + ' deals · ' + money(computed) + ' quantified</span>' +
+      '<span class="result-count">' + list.length + ' of ' + all.length + ' deals</span>' +
       '</div>';
 
     var cols = [
@@ -395,7 +460,6 @@
       { key: 'stageNum', label: 'Stage' },
       { key: 'priority', label: 'Priority' },
       { key: 'targetSort', label: 'Target' },
-      { key: 'revenue', label: 'Annual rev', cls: 'num' },
       { key: null, label: 'Next action / notes' }
     ];
     var head = cols.map(function (c) {
@@ -411,7 +475,6 @@
         '<td>' + chip('stage', d.stageLabel || d.stage) + '</td>' +
         '<td>' + priorityChip(d.priority) + '</td>' +
         '<td>' + targetChip(d.target, d.targetSort) + '</td>' +
-        '<td class="num">' + (d.revenue == null ? '<span class="hint">not set</span>' : money(d.revenue)) + '</td>' +
         '<td class="note">' + esc(d.notes) + (d.flags.length ? '<div class="chips" style="margin-top:6px">' + flagChips(d.flags) + '</div>' : '') + '</td>' +
         '</tr>';
     }).join('');
@@ -419,7 +482,7 @@
     return banner + '<div class="grid two">' + funnelCard(list, 'Pipeline by stage' + (list.length !== all.length ? ' (filtered)' : '')) + verticalCard(list) + '</div>' +
       '<div style="height:18px"></div>' + filters +
       '<div class="table-wrap"><table><thead><tr>' + head + '</tr></thead><tbody>' +
-      (body || '<tr><td colspan="7" class="empty">No deals match those filters.</td></tr>') +
+      (body || '<tr><td colspan="6" class="empty">No deals match those filters.</td></tr>') +
       '</tbody></table></div>';
   };
 
@@ -449,7 +512,7 @@
       select('fpriority', 'All priorities', uniq(all.map(function (p) { return p.priority; })).map(function (p) { return { value: p, label: p }; }), f.priority) +
       '<span class="result-count">' + list.length + ' of ' + all.length + ' deal plans</span></div>';
 
-    var cards = list.map(function (p) {
+    var card = function (p) {
       var stalled = p.steps.every(function (s) { return s.key !== 'active'; }) && p.progress < 100;
       return '<article class="item' + (p.flags.length ? ' attention' : '') + '">' +
         '<div class="item-head"><h3>' + esc(p.client) + '</h3><div class="chips">' + priorityChip(p.priority) + '</div></div>' +
@@ -460,9 +523,12 @@
         (p.notes ? '<p class="note">' + esc(p.notes) + '</p>' : '') +
         (p.flags.length || stalled ? '<div class="chips">' + flagChips(p.flags) + (stalled && p.stepsDone < p.stepCount ? chip('wait', 'No milestone in progress') : '') + '</div>' : '') +
         '</article>';
-    }).join('');
+    };
 
-    return filters + (list.length ? '<div class="grid cards">' + cards + '</div>' : '<p class="empty">No deal plans match those filters.</p>') +
+    var stageNames = (state.data.dealPlans && state.data.dealPlans.stageNames) || [];
+    return filters + (list.length
+      ? groupedSections(list, stageNames, card, 'milestones')
+      : '<p class="empty">No deal plans match those filters.</p>') +
       '<div class="card" style="margin-top:16px">' + stepLegend() + '</div>';
   };
 
@@ -500,7 +566,7 @@
       ], f.status) +
       '<span class="result-count">' + list.length + ' of ' + all.length + ' courses</span></div>';
 
-    var cards = list.map(function (c) {
+    var card = function (c) {
       var attention = c.flags.length || (isOverdue(c.targetSort) && c.progress < 100);
       return '<article class="item' + (attention ? ' attention' : '') + '">' +
         '<div class="item-head"><h3>' + esc(c.name) + '</h3><div class="chips">' + priorityChip(c.priority) + '</div></div>' +
@@ -511,13 +577,15 @@
         (c.notes ? '<p class="note">' + esc(c.notes) + '</p>' : '') +
         (c.flags.length ? '<div class="chips">' + flagChips(c.flags) + '</div>' : '') +
         '</article>';
-    }).join('');
+    };
 
     var footnotes = (state.data.courses.footnotes || []).map(function (n) {
       return '<div class="banner info"><span aria-hidden="true">ℹ</span><div>' + esc(n) + '</div></div>';
     }).join('');
 
-    return strip + filters + (list.length ? '<div class="grid cards">' + cards + '</div>' : '<p class="empty">No courses match those filters.</p>') +
+    return strip + filters + (list.length
+      ? groupedSections(list, stages, card, 'stages')
+      : '<p class="empty">No courses match those filters.</p>') +
       (footnotes ? '<div style="margin-top:16px">' + footnotes + '</div>' : '');
   };
 
@@ -560,6 +628,46 @@
 
     return filters + (list.length ? '<div class="grid cards">' + cards + '</div>' : '<p class="empty">No projects match those filters.</p>');
   };
+
+  /* Which stage is this item sitting at? Used to break the long card walls into
+     sections, so you can read a page by stage rather than scrolling everything. */
+  function stageBucket(steps, done, total) {
+    for (var i = 0; i < steps.length; i++) if (steps[i].key === 'active') return { order: i, index: i, live: true };
+    if (total && done === total) return { order: 900, index: null, complete: true };
+    if (steps.every(function (s) { return s.key === 'none'; })) return { order: -1, index: null, idle: true };
+    for (var j = 0; j < steps.length; j++) if (steps[j].key !== 'done') return { order: j, index: j, live: false };
+    return { order: 901, index: null };
+  }
+
+  /* Render items grouped into stage sections, most advanced work last. */
+  function groupedSections(items, steps, cardFn, noun) {
+    var buckets = {};
+    items.forEach(function (item) {
+      var b = stageBucket(item.steps, item.stagesDone != null ? item.stagesDone : item.stepsDone,
+        item.stageCount != null ? item.stageCount : item.stepCount);
+      var key = b.complete ? 'complete' : (b.idle ? 'idle' : String(b.index));
+      if (!buckets[key]) {
+        buckets[key] = {
+          order: b.order,
+          title: b.complete ? 'All ' + noun + ' complete'
+            : b.idle ? 'Not started'
+              : (noun === 'stages' ? 'Stage ' : 'Milestone ') + (b.index + 1) + ' — ' + steps[b.index],
+          items: []
+        };
+      }
+      buckets[key].items.push(item);
+    });
+    var keys = Object.keys(buckets).sort(function (a, b) { return buckets[a].order - buckets[b].order; });
+    if (!keys.length) return '';
+    return keys.map(function (k) {
+      var g = buckets[k];
+      return '<section class="stage-group">' +
+        '<div class="stage-group-head"><h2>' + esc(g.title) + '</h2>' +
+        '<span class="chip ghost">' + g.items.length + '</span></div>' +
+        '<div class="grid cards">' + g.items.map(cardFn).join('') + '</div>' +
+        '</section>';
+    }).join('');
+  }
 
   function updateRow(u) {
     return '<div class="tl-item"><div class="tl-date">' + esc(dateLabel(u.date)) + '<br>' + (u.tag ? chip('ghost', u.tag) : '') + '</div>' +
@@ -832,6 +940,16 @@
       el.addEventListener('change', function () {
         state.filters[state.route][pair[1]] = el.value;
         render();
+      });
+    });
+
+    $$('.pstep', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-step');
+        state.filters.overviewStep = state.filters.overviewStep === id ? null : id;
+        render();
+        var again = $('.pstep[data-step="' + id + '"]');
+        if (again) again.focus();
       });
     });
 
