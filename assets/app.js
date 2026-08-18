@@ -772,27 +772,41 @@
   function planDetails(c) {
     var m = buildModel();
     var plan = coursePlan(c);
-    if (!plan.target) {
-      return '<details class="plan"><summary>Stage deadlines</summary>' +
-        '<p class="hint" style="margin:10px 0 0">No go-live target on this course, so there is nothing to work back from. ' +
-        'Put a date in the tracker and the ten stage deadlines appear here.</p></details>';
-    }
+    var saved = stagePlanFor(c.name);
+    var today = new Date();
+    var agreed = Object.keys(saved).filter(function (k) { return saved[k] && (saved[k].due || saved[k].who); }).length;
+
     var rows = c.steps.map(function (st, i) {
-      var due = plan.deadlines[i];
-      var late = due && due < new Date() && st.key !== 'done';
-      return '<tr><td class="num">' + (i + 1) + '</td><td>' + esc(st.name) + '</td>' +
-        '<td><span data-tip="' + esc(expandInitials(m.roles[i] || '')) + '">' + esc(m.roles[i] || '—') + '</span></td>' +
-        '<td class="num">' + (m.days[i] || 0) + 'd</td>' +
-        '<td>' + (st.key === 'done'
-          ? chip('done', 'Complete', '✓')
-          : (due ? (late ? chip('risk', fmtDate(due), '!') : chip('ghost', fmtDate(due))) : '—')) + '</td></tr>';
+      var own = saved[i] || {};
+      var suggested = plan.deadlines[i];
+      var dueValue = own.due || (suggested ? isoDate(suggested) : '');
+      var whoValue = own.who || m.roles[i] || '';
+      var dueDate = own.due ? new Date(own.due) : suggested;
+      var late = dueDate && dueDate < today && st.key !== 'done';
+
+      return '<tr' + (late ? ' class="row-late"' : '') + '>' +
+        '<td class="num">' + (i + 1) + '</td>' +
+        '<td>' + esc(st.name) + '</td>' +
+        '<td>' + (st.key === 'done' ? chip('done', 'Complete', '✓')
+          : st.key === 'active' ? chip('active', 'In progress', '▶')
+            : chip('wait', st.label || 'Not started', '○')) + '</td>' +
+        '<td><input type="date" class="stage-due" data-course="' + esc(c.name) + '" data-stage="' + i + '"' +
+        ' value="' + esc(dueValue) + '"' + (own.due ? '' : ' data-suggested="1"') + '></td>' +
+        '<td><input type="text" class="stage-who" data-course="' + esc(c.name) + '" data-stage="' + i + '"' +
+        ' value="' + esc(whoValue) + '" placeholder="who" data-tip="' + esc(expandInitials(whoValue)) + '"' +
+        (own.who ? '' : ' data-suggested="1"') + '></td>' +
+        '<td>' + (late ? chip('risk', 'Overdue', '!') : (own.due || own.who ? chip('done', 'Agreed', '✓') : chip('ghost', 'Suggested'))) + '</td>' +
+        '</tr>';
     }).join('');
-    return '<details class="plan"><summary>Stage deadlines — ' + plan.remainingDays + ' build days left, ' +
-      (plan.shortfall > 0 ? 'short by ' + plan.shortfall : (plan.available == null ? 'no target' : plan.available + ' working days available')) +
-      '</summary><div class="table-wrap" style="margin-top:10px"><table><thead><tr>' +
-      '<th>#</th><th>Stage</th><th>Who</th><th>Days</th><th>Due</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<p class="hint" style="margin:8px 0 0">Worked back from the go-live target using the standard build. ' +
-      'Nobody has typed these dates — change a stage duration and they all move.</p></details>';
+
+    return '<details class="plan"><summary>Stage dates and owners — ' + agreed + ' of ' + c.steps.length + ' agreed' +
+      (plan.target ? ', ' + plan.remainingDays + ' build days left' : ', no go-live target set') + '</summary>' +
+      '<div class="table-wrap" style="margin-top:10px"><table><thead><tr>' +
+      '<th>#</th><th>Stage</th><th>Status</th><th>Date</th><th>Responsible</th><th></th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>' +
+      '<p class="hint" style="margin:8px 0 0">Grey values are suggestions from the standard build, worked back from the ' +
+      'go-live target. Type over one and it becomes an agreed date or owner for this course. ' +
+      'Changes save to this browser until published from Update data.</p></details>';
   }
 
   function buildModelCard() {
@@ -1130,38 +1144,66 @@
       '<span class="result-count">' + list.length + ' of ' + all.length + ' deals</span>' +
       '</div>';
 
-    var cols = [
-      { key: 'client', label: 'Client / partner' },
-      { key: 'vertical', label: 'Vertical' },
-      { key: 'stageNum', label: 'Stage' },
-      { key: 'priority', label: 'Priority' },
-      { key: 'targetSort', label: 'Target' },
-      { key: null, label: 'Next action / notes' }
-    ];
-    var head = cols.map(function (c) {
-      if (!c.key) return '<th>' + esc(c.label) + '</th>';
-      var arrow = sort.key === c.key ? '<span class="arrow">' + (sort.dir > 0 ? '▲' : '▼') + '</span>' : '';
-      return '<th class="sortable" data-sort="' + c.key + '">' + esc(c.label) + ' ' + arrow + '</th>';
+    /* The page is organised by the ten sales steps, one section each. */
+    var placed = {};
+    PROCESS.forEach(function (p) { if (!p.gate) placed[p.id] = []; });
+    var unplaced = [];
+    list.forEach(function (d) {
+      var id = STAGE_TO_STEP[d.stageNum];
+      if (id && placed[id]) placed[id].push(d);
+      else unplaced.push(d);
+    });
+
+    function dealRows(items) {
+      return items.sort(function (a, b) {
+        return priorityRank(a.priority) - priorityRank(b.priority) ||
+          (a.targetSort || 999999) - (b.targetSort || 999999);
+      }).map(function (d) {
+        return '<tr>' +
+          '<td class="client-cell">' + esc(d.client) + (d.ref ? '<small>ref ' + esc(d.ref) + '</small>' : '') + '</td>' +
+          '<td>' + esc(d.vertical) + '</td>' +
+          '<td>' + priorityChip(d.priority) + '</td>' +
+          '<td>' + targetChip(d.target, d.targetSort) + '</td>' +
+          '<td class="note">' + esc(d.notes) +
+          (d.flags.length ? '<div class="chips" style="margin-top:6px">' + flagChips(d.flags) + '</div>' : '') + '</td>' +
+          '</tr>';
+      }).join('');
+    }
+
+    var tracked = {};
+    Object.keys(STAGE_TO_STEP).forEach(function (k) { tracked[STAGE_TO_STEP[k]] = true; });
+
+    var sections = PROCESS.filter(function (p) { return !p.gate; }).map(function (p) {
+      var items = placed[p.id] || [];
+      var gateBefore = p.id === '5' ? ['Gate 1', 'Commercial Alignment Checkpoint — agreement to progress to commercial discussions.']
+        : (p.id === '7' ? ['Gate 2', 'Delivery Readiness Checkpoint — internal approval to proceed to proposal and delivery planning.'] : null);
+      var head = (gateBefore ? '<div class="gate-band"><b>' + gateBefore[0] + '</b> ' + esc(gateBefore[1]) + '</div>' : '') +
+        '<div class="stage-group-head"><h2>' + esc(p.id + '. ' + p.name) + '</h2>' +
+        '<span class="chip ghost">' + items.length + '</span>' +
+        '<span class="hint" data-tip="' + esc(expandInitials(p.lead)) + '">Led by ' + esc(p.lead) + '</span></div>';
+
+      var body = items.length
+        ? '<div class="table-wrap"><table><thead><tr><th>Client / partner</th><th>Vertical</th>' +
+        '<th>Priority</th><th>Target go-live</th><th>Next action / notes</th></tr></thead>' +
+        '<tbody>' + dealRows(items) + '</tbody></table></div>'
+        : '<p class="empty">' + (tracked[p.id]
+          ? 'No clients at this step.'
+          : 'The sales tracker does not record this step, so nobody can be placed here yet. Add a step column to the tracker and this fills in.') + '</p>';
+
+      return '<section class="stage-group">' + head + body + '</section>';
     }).join('');
 
-    var body = list.map(function (d) {
-      return '<tr>' +
-        '<td class="client-cell">' + esc(d.client) + (d.ref ? '<small>ref ' + esc(d.ref) + '</small>' : '') + '</td>' +
-        '<td>' + esc(d.vertical) + '</td>' +
-        '<td>' + chip('stage', d.stageLabel || d.stage) + '</td>' +
-        '<td>' + priorityChip(d.priority) + '</td>' +
-        '<td>' + targetChip(d.target, d.targetSort) + '</td>' +
-        '<td class="note">' + esc(d.notes) + (d.flags.length ? '<div class="chips" style="margin-top:6px">' + flagChips(d.flags) + '</div>' : '') + '</td>' +
-        '</tr>';
-    }).join('');
+    var leftovers = unplaced.length
+      ? '<section class="stage-group"><div class="stage-group-head"><h2>Not on the process yet</h2>' +
+      '<span class="chip ghost">' + unplaced.length + '</span></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Client / partner</th><th>Vertical</th>' +
+      '<th>Priority</th><th>Target go-live</th><th>Next action / notes</th></tr></thead>' +
+      '<tbody>' + dealRows(unplaced) + '</tbody></table></div></section>'
+      : '';
 
-    return banner + salesPriorityCard(list.filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; })) +
-      '<div style="height:18px"></div>' +
-      '<div class="grid two">' + funnelCard(list, 'Deals by stage' + (list.length !== all.length ? ' (filtered)' : '')) + verticalCard(list) + '</div>' +
+    return banner + salesPriorityCard(list.filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; }), 8) +
       '<div style="height:18px"></div>' + filters +
-      '<div class="table-wrap"><table><thead><tr>' + head + '</tr></thead><tbody>' +
-      (body || '<tr><td colspan="6" class="empty">No deals match those filters.</td></tr>') +
-      '</tbody></table></div>';
+      (list.length ? sections + leftovers : '<p class="empty">No deals match those filters.</p>');
   };
 
   function uniqStages(all) {
@@ -1211,7 +1253,7 @@
   };
 
   views.courses = function () {
-    var f = state.filters.courses = state.filters.courses || { q: '', priority: '', status: '', groupBy: 'priority' };
+    var f = state.filters.courses = state.filters.courses || { q: '', priority: '', status: '', groupBy: 'stage' };
     var all = courses().filter(function (c) { return c.name; });
     var list = all.filter(function (c) {
       if (f.priority && c.priority !== f.priority) return false;
@@ -1243,8 +1285,8 @@
         { value: 'late', label: 'Past target date' }
       ], f.status) +
       select('fgroup', 'Group by…', [
-        { value: 'priority', label: 'Group by build priority' },
-        { value: 'stage', label: 'Group by build stage' }
+        { value: 'stage', label: 'Group by build stage' },
+        { value: 'priority', label: 'Group by build priority' }
       ], f.groupBy) +
       '<span class="result-count">' + list.length + ' of ' + all.length + ' courses</span></div>';
 
@@ -1491,6 +1533,31 @@
       '</section>';
   };
 
+
+
+  /* ---------- per-course stage plans ----------
+     Each course needs a date and a named person for all ten stages. The standard
+     build gives every stage a suggested date (worked back from the go-live
+     target) and a suggested role, so nobody starts from a blank grid. Anything
+     typed here overrides the suggestion and is marked as agreed. */
+  function stagePlanFor(courseName) {
+    var all = state.data.stagePlans || {};
+    return all[courseName] || {};
+  }
+  function setStagePlan(courseName, index, field, value) {
+    var data = JSON.parse(JSON.stringify(state.data));
+    data.stagePlans = data.stagePlans || {};
+    data.stagePlans[courseName] = data.stagePlans[courseName] || {};
+    data.stagePlans[courseName][index] = data.stagePlans[courseName][index] || {};
+    data.stagePlans[courseName][index][field] = value;
+    data.stagePlans[courseName][index].setAt = new Date().toISOString().slice(0, 10);
+    savePreview(data);
+  }
+  function isoDate(d) {
+    if (!d) return '';
+    var m = d.getMonth() + 1, day = d.getDate();
+    return d.getFullYear() + '-' + (m < 10 ? '0' + m : m) + '-' + (day < 10 ? '0' + day : day);
+  }
 
   /* ---------- accountability ----------
      Every time a go-live target moves between one import and the next it is
@@ -1908,6 +1975,19 @@
       });
       dz.addEventListener('drop', function (e) { handleFiles(e.dataTransfer.files); });
     }
+
+    $$('.stage-due', main).forEach(function (input) {
+      input.addEventListener('change', function () {
+        setStagePlan(input.getAttribute('data-course'), +input.getAttribute('data-stage'), 'due', input.value);
+        render();
+      });
+    });
+    $$('.stage-who', main).forEach(function (input) {
+      input.addEventListener('change', function () {
+        setStagePlan(input.getAttribute('data-course'), +input.getAttribute('data-stage'), 'who', input.value.trim());
+        render();
+      });
+    });
 
     on('#saveModel', 'click', function () {
       var data = JSON.parse(JSON.stringify(state.data));
