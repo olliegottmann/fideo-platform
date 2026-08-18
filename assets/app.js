@@ -315,6 +315,140 @@
       '</section>';
   }
 
+  /* ---------- prioritisation ----------
+     Two rules, set by the directors. Both are computed here and shown with their
+     reasoning so anyone can see why something ranks where it does.
+
+     SALES: highest revenue potential and closest to deal completion ranks first.
+     BUILD: 1 active clients with a signed mandate, 2 high-priority new clients
+            per the sales pipeline, 3 what ECI want, 4 what we think the market
+            wants. Never deviate without director agreement. */
+  var PRIORITY_RULE_SALES = 'Highest revenue potential and closest to deal completion ranks first.';
+  var PRIORITY_RULE_BUILD = 'Signed mandates first, then high-priority new clients, then ECI, then market-led. Never deviate without director agreement.';
+
+  function salesRanking(list) {
+    var revenues = list.map(function (d) { return d.revenue || 0; });
+    var maxRev = Math.max.apply(null, revenues.concat([1]));
+    var logMax = Math.log10(1 + maxRev);
+    return list.map(function (d) {
+      /* completion: stage 6 of 6 is as close as it gets. revenue: log-scaled so
+         one very large deal cannot flatten everything below it. */
+      var completion = (d.stageNum || 0) / 6;
+      var revScore = d.revenue ? Math.log10(1 + d.revenue) / logMax : 0;
+      return {
+        deal: d,
+        score: (completion * 0.5) + (revScore * 0.5),
+        completion: completion,
+        revScore: revScore,
+        unvalued: d.revenue == null
+      };
+    }).sort(function (a, b) {
+      return b.score - a.score || (a.deal.client || '').localeCompare(b.deal.client || '');
+    });
+  }
+
+  /* Find the pipeline deal a course belongs to. Whole-word matching only —
+     substring matching linked "Gambling Compliance" to LIA, on the "lia" inside
+     "compliance". Generic industry words are ignored so "Financial & Digital
+     Literacy" cannot attach itself to a client called Financia. The match is
+     shown on screen so a wrong one is visible and can be corrected. */
+  var MATCH_STOP_WORDS = ['training', 'programme', 'programmes', 'course', 'courses', 'short',
+    'institute', 'association', 'assoc', 'school', 'global', 'ireland', 'irish', 'professional',
+    'business', 'compliance', 'digital', 'the', 'and', 'for'];
+  /* Known abbreviations the trackers use on one side but not the other. */
+  var COURSE_CLIENT_ALIASES = [
+    [/\bpfai\b/i, 'Ireland Professional Players Assoc.'],
+    [/\bcu\b|credit union/i, 'Credit Unions'],
+    [/\beirgrid\b/i, 'Analytics Institute'],
+    [/fincrime|\bamli\b/i, 'AML Intelligence']
+  ];
+
+  function wordBag(s) {
+    return ' ' + String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+  }
+
+  function dealForCourse(course, dealList) {
+    var name = wordBag(course.name);
+    var byClient = {};
+    dealList.forEach(function (d) { byClient[d.client] = d; });
+
+    for (var i = 0; i < COURSE_CLIENT_ALIASES.length; i++) {
+      if (COURSE_CLIENT_ALIASES[i][0].test(course.name) && byClient[COURSE_CLIENT_ALIASES[i][1]]) {
+        return byClient[COURSE_CLIENT_ALIASES[i][1]];
+      }
+    }
+
+    var best = null, bestScore = 0;
+    dealList.forEach(function (d) {
+      var client = wordBag(d.client).trim();
+      if (!client) return;
+      if (client.length > 3 && name.indexOf(' ' + client + ' ') !== -1 && client.length > bestScore) {
+        best = d; bestScore = client.length; return;
+      }
+      client.split(' ').forEach(function (w) {
+        if (w.length < 3 || MATCH_STOP_WORDS.indexOf(w) !== -1) return;
+        if (name.indexOf(' ' + w + ' ') !== -1 && w.length > bestScore) { best = d; bestScore = w.length; }
+      });
+    });
+    return best;
+  }
+
+  var BUILD_TIERS = {
+    1: { label: 'Signed mandate', kind: 'done', glyph: '1' },
+    2: { label: 'High-priority new client', kind: 'brand', glyph: '2' },
+    3: { label: 'ECI', kind: 'amber', glyph: '3' },
+    4: { label: 'Market-led', kind: 'wait', glyph: '4' }
+  };
+
+  function buildTier(course, dealList) {
+    var deal = dealForCourse(course, dealList);
+    /* the "active client / signed" signal usually lives in the deal's notes,
+       not the build tracker's */
+    var text = (course.name + ' ' + course.notes + ' ' + (deal ? deal.notes : '')).toLowerCase();
+
+    /* "signed" has to mean signed — not "awaiting signature". But a note about
+       waiting on content from a live client is a delivery detail, not an unsigned
+       mandate, so the exclusions name the contract explicitly. */
+    var signed = /(active client|contract signed|signed contract|mandate signed|signed mandate|contracted)/;
+    var unsigned = /(awaiting sign|awaiting contract|await contract|waiting on sign|waiting contract|waiting on contract|pending contract|pending .{0,20}agreement|to be agreed|not yet signed|subject to contract|when .{0,15}sign|once .{0,15}sign|if .{0,15}sign)/;
+
+    if (deal && deal.stageNum >= 5) {
+      return { tier: 1, deal: deal, why: deal.client + ' is at ' + (deal.stageLabel || deal.stage) + ' — mandate signed' };
+    }
+    if (signed.test(text) && !unsigned.test(text)) {
+      return {
+        tier: 1, deal: deal,
+        why: (deal ? deal.client + ' — ' : '') + 'tracker notes record an active client or signed mandate'
+      };
+    }
+    if (deal && String(deal.priority).toUpperCase() === 'HIGH') {
+      return { tier: 2, deal: deal, why: deal.client + ' is a High priority deal at ' + (deal.stageLabel || deal.stage) };
+    }
+    if (/\beci\b|erasmus/.test(text)) {
+      return { tier: 3, deal: deal, why: 'ECI-commissioned work' };
+    }
+    if (deal) {
+      return { tier: 4, deal: deal, why: 'Linked to ' + deal.client + ', priority ' + deal.priority };
+    }
+    return { tier: 4, deal: null, why: 'No client in the pipeline — built on our read of the market' };
+  }
+
+  function buildRanking(list, dealList) {
+    return list.map(function (c) {
+      var t = buildTier(c, dealList);
+      return { course: c, tier: t.tier, deal: t.deal, why: t.why };
+    }).sort(function (a, b) {
+      return a.tier - b.tier ||
+        (a.course.targetSort || 999999) - (b.course.targetSort || 999999) ||
+        priorityRank(a.course.priority) - priorityRank(b.course.priority) ||
+        b.course.progress - a.course.progress;
+    });
+  }
+
+  function ruleNote(text) {
+    return '<div class="rule-note"><span class="rule-note-mark" aria-hidden="true">§</span><div>' + text + '</div></div>';
+  }
+
   /* ---------- charts ---------- */
   function barChart(rows, opts) {
     opts = opts || {};
@@ -360,6 +494,44 @@
 
   /* ---------- views ---------- */
   var views = {};
+
+  function salesPriorityCard(list, limit) {
+    var ranked = salesRanking(list);
+    var shown = limit ? ranked.slice(0, limit) : ranked;
+    if (!shown.length) return '';
+    return '<section class="card"><div class="card-head"><h2>Sales priority order</h2>' +
+      '<span class="hint">' + (limit ? 'top ' + limit + ' of ' + ranked.length : ranked.length + ' live deals') + '</span></div>' +
+      ruleNote(esc(PRIORITY_RULE_SALES)) +
+      '<div class="list ranked">' + shown.map(function (r, i) {
+        var d = r.deal;
+        var mismatch = i < 5 && ['LOW', 'MONITOR'].indexOf(String(d.priority).toUpperCase()) !== -1;
+        return '<div class="list-row"><span class="rank">' + (i + 1) + '</span>' +
+          '<div class="lr-main"><div class="lr-title">' + esc(d.client) + '</div>' +
+          '<div class="lr-sub">' + esc(d.stageLabel || d.stage) + ' — ' +
+          (d.revenue != null ? esc(money(d.revenue)) + ' a year' : 'no value recorded') + '</div>' +
+          (mismatch || r.unvalued ? '<div class="chips" style="margin-top:5px">' +
+            (mismatch ? chip('amber', 'Ranks top 5 but marked ' + d.priority) : '') +
+            (r.unvalued ? chip('wait', 'Add a value to rank it properly') : '') + '</div>' : '') +
+          '</div>' +
+          '<div class="lr-side">' + targetChip(d.target, d.targetSort) + '</div></div>';
+      }).join('') + '</div></section>';
+  }
+
+  function buildPriorityCard(limit) {
+    var ranked = buildRanking(courses().filter(function (c) { return c.name && c.progress < 100; }), liveDeals());
+    var shown = limit ? ranked.slice(0, limit) : ranked;
+    if (!shown.length) return '';
+    return '<section class="card"><div class="card-head"><h2>Build priority order</h2>' +
+      '<span class="hint">' + (limit ? 'top ' + limit + ' of ' + ranked.length : ranked.length + ' in flight') + '</span></div>' +
+      ruleNote(esc(PRIORITY_RULE_BUILD)) +
+      '<div class="list ranked">' + shown.map(function (r, i) {
+        var t = BUILD_TIERS[r.tier];
+        return '<div class="list-row"><span class="rank">' + (i + 1) + '</span>' +
+          '<div class="lr-main"><div class="lr-title">' + esc(r.course.name) + '</div>' +
+          '<div class="lr-sub">' + esc(r.why) + '</div></div>' +
+          '<div class="lr-side">' + chip(t.kind, t.label) + '</div></div>';
+      }).join('') + '</div></section>';
+  }
 
   views.overview = function () {
     var live = liveDeals();
@@ -410,6 +582,8 @@
       '</section>';
 
     return kpis + '<div style="height:16px"></div>' + processCard(live) +
+      '<div style="height:16px"></div>' +
+      '<div class="grid two">' + salesPriorityCard(live, 5) + buildPriorityCard(5) + '</div>' +
       '<div style="height:16px"></div>' + charts + '<div style="height:16px"></div>' +
       '<div class="grid two">' + attentionList + upcomingList + '</div>' +
       '<div style="height:16px"></div>' + updatesCard;
@@ -479,7 +653,9 @@
         '</tr>';
     }).join('');
 
-    return banner + '<div class="grid two">' + funnelCard(list, 'Pipeline by stage' + (list.length !== all.length ? ' (filtered)' : '')) + verticalCard(list) + '</div>' +
+    return banner + salesPriorityCard(list.filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; })) +
+      '<div style="height:18px"></div>' +
+      '<div class="grid two">' + funnelCard(list, 'Deals by stage' + (list.length !== all.length ? ' (filtered)' : '')) + verticalCard(list) + '</div>' +
       '<div style="height:18px"></div>' + filters +
       '<div class="table-wrap"><table><thead><tr>' + head + '</tr></thead><tbody>' +
       (body || '<tr><td colspan="6" class="empty">No deals match those filters.</td></tr>') +
@@ -533,7 +709,7 @@
   };
 
   views.courses = function () {
-    var f = state.filters.courses = state.filters.courses || { q: '', priority: '', status: '' };
+    var f = state.filters.courses = state.filters.courses || { q: '', priority: '', status: '', groupBy: 'priority' };
     var all = courses().filter(function (c) { return c.name; });
     var list = all.filter(function (c) {
       if (f.priority && c.priority !== f.priority) return false;
@@ -564,12 +740,23 @@
         { value: 'notstarted', label: 'Not started' },
         { value: 'late', label: 'Past target date' }
       ], f.status) +
+      select('fgroup', 'Group by…', [
+        { value: 'priority', label: 'Group by build priority' },
+        { value: 'stage', label: 'Group by build stage' }
+      ], f.groupBy) +
       '<span class="result-count">' + list.length + ' of ' + all.length + ' courses</span></div>';
+
+    var tiers = {};
+    buildRanking(all, liveDeals()).forEach(function (r) { tiers[r.course.name] = r; });
 
     var card = function (c) {
       var attention = c.flags.length || (isOverdue(c.targetSort) && c.progress < 100);
+      var t = tiers[c.name];
+      var tierMeta = t ? BUILD_TIERS[t.tier] : null;
       return '<article class="item' + (attention ? ' attention' : '') + '">' +
         '<div class="item-head"><h3>' + esc(c.name) + '</h3><div class="chips">' + priorityChip(c.priority) + '</div></div>' +
+        (tierMeta ? '<div class="chips">' + chip(tierMeta.kind, tierMeta.glyph + '. ' + tierMeta.label) + '</div>' +
+          '<p class="note tier-why">' + esc(t.why) + '</p>' : '') +
         '<div class="chips">' + targetChip(c.target, c.targetSort, c.provisional) +
         chip('ghost', c.currentStage) + (c.owner ? chip('ghost', 'Owner: ' + c.owner) : '') + '</div>' +
         stepStrip(c.steps) +
@@ -583,9 +770,26 @@
       return '<div class="banner info"><span aria-hidden="true">ℹ</span><div>' + esc(n) + '</div></div>';
     }).join('');
 
-    return strip + filters + (list.length
-      ? groupedSections(list, stages, card, 'stages')
-      : '<p class="empty">No courses match those filters.</p>') +
+    var body;
+    if (!list.length) {
+      body = '<p class="empty">No courses match those filters.</p>';
+    } else if (f.groupBy === 'stage') {
+      body = groupedSections(list, stages, card, 'stages');
+    } else {
+      /* grouped by the directors' build-priority rule */
+      var order = buildRanking(list, liveDeals());
+      body = [1, 2, 3, 4].map(function (tier) {
+        var items = order.filter(function (r) { return r.tier === tier; }).map(function (r) { return r.course; });
+        if (!items.length) return '';
+        var meta = BUILD_TIERS[tier];
+        return '<section class="stage-group"><div class="stage-group-head">' +
+          '<h2>' + meta.glyph + '. ' + esc(meta.label) + '</h2>' +
+          '<span class="chip ghost">' + items.length + '</span></div>' +
+          '<div class="grid cards">' + items.map(card).join('') + '</div></section>';
+      }).join('');
+    }
+
+    return strip + ruleNote('<b>Build order:</b> ' + esc(PRIORITY_RULE_BUILD)) + filters + body +
       (footnotes ? '<div style="margin-top:16px">' + footnotes + '</div>' : '');
   };
 
@@ -934,7 +1138,7 @@
         if (again) { again.focus(); again.setSelectionRange(pos, pos); }
       }, 180));
     }
-    [['fstage', 'stage'], ['fpriority', 'priority'], ['fvertical', 'vertical'], ['fstatus', 'status']].forEach(function (pair) {
+    [['fstage', 'stage'], ['fpriority', 'priority'], ['fvertical', 'vertical'], ['fstatus', 'status'], ['fgroup', 'groupBy']].forEach(function (pair) {
       var el = $('#' + pair[0], main);
       if (!el) return;
       el.addEventListener('change', function () {
