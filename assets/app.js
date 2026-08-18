@@ -16,6 +16,7 @@
     route: 'overview',
     pending: null,          // dataset staged by the importer
     pendingDiff: [],
+    pendingTargets: [],
     filters: {},
     sort: { pipeline: { key: 'stageNum', dir: -1 } }
   };
@@ -567,6 +568,258 @@
     return '<div class="rule-note"><span class="rule-note-mark" aria-hidden="true">§</span><div>' + text + '</div></div>';
   }
 
+  /* ---------- the standard build ----------
+     How long a course should take, stage by stage, and who owns each stage.
+     These durations are NOT recorded anywhere — they are a starting point sized
+     to the tracker's own note that EirGrid is a "4-6 week build when contract
+     signed". They must be confirmed by the Course Director before anyone makes a
+     hiring decision on them, and the page says so. Change them in one place and
+     every deadline and staffing number recalculates. */
+  var DEFAULT_BUILD_MODEL = {
+    days: [3, 2, 5, 5, 3, 2, 1, 2, 2, 1],
+    roles: ['AQ', 'AQ', 'AQ', 'OM', 'OM', 'OM', 'OM', 'OM', 'AQ', 'AQ/OM'],
+    confirmed: false
+  };
+  function buildModel() {
+    var m = state.data.buildModel || DEFAULT_BUILD_MODEL;
+    return {
+      days: m.days || DEFAULT_BUILD_MODEL.days,
+      roles: m.roles || DEFAULT_BUILD_MODEL.roles,
+      confirmed: !!m.confirmed
+    };
+  }
+  function modelTotalDays() {
+    return buildModel().days.reduce(function (a, b) { return a + b; }, 0);
+  }
+
+  function endOfMonthFromKey(key) {
+    if (!key) return null;
+    return new Date(Math.floor(key / 100), key % 100, 0);
+  }
+  function workingDaysBetween(from, to) {
+    if (!from || !to) return null;
+    var a = new Date(from), b = new Date(to), sign = 1;
+    a.setHours(0, 0, 0, 0); b.setHours(0, 0, 0, 0);
+    if (b < a) { var t = a; a = b; b = t; sign = -1; }
+    var n = 0;
+    while (a < b) {
+      var wd = a.getDay();
+      if (wd !== 0 && wd !== 6) n++;
+      a.setDate(a.getDate() + 1);
+    }
+    return n * sign;
+  }
+  function minusWorkingDays(date, days) {
+    var d = new Date(date);
+    while (days > 0) {
+      d.setDate(d.getDate() - 1);
+      var wd = d.getDay();
+      if (wd !== 0 && wd !== 6) days--;
+    }
+    return d;
+  }
+  function fmtDate(d) {
+    return d ? d.toLocaleDateString('en-IE', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  }
+
+  /* Stage deadlines are back-scheduled from the go-live target using the standard
+     build, so every course gets a date per stage without anyone typing twenty of them. */
+  function coursePlan(c) {
+    var m = buildModel();
+    var target = endOfMonthFromKey(c.targetSort);
+    var remaining = [];
+    c.steps.forEach(function (s, i) { if (s.key !== 'done') remaining.push(i); });
+    var remainingDays = remaining.reduce(function (a, i) { return a + (m.days[i] || 0); }, 0);
+    var available = target ? workingDaysBetween(new Date(), target) : null;
+    var deadlines = {}, cursor = target ? new Date(target) : null;
+    for (var k = remaining.length - 1; k >= 0; k--) {
+      var idx = remaining[k];
+      deadlines[idx] = cursor ? new Date(cursor) : null;
+      if (cursor) cursor = minusWorkingDays(cursor, m.days[idx] || 0);
+    }
+    return {
+      remaining: remaining, remainingDays: remainingDays, target: target,
+      available: available, deadlines: deadlines, startBy: cursor,
+      shortfall: available == null ? null : remainingDays - available
+    };
+  }
+
+  function staffingCase() {
+    var live = courses().filter(function (c) { return c.name && c.progress < 100 && c.targetSort; });
+    var inHorizon = live.filter(function (c) {
+      var m = monthsFromNow(c.targetSort);
+      return m !== null && m <= 6;
+    });
+    var plans = inHorizon.map(function (c) { return { course: c, plan: coursePlan(c) }; });
+    var behind = plans.filter(function (p) { return p.plan.shortfall > 0; });
+    var totalDays = plans.reduce(function (a, p) { return a + p.plan.remainingDays; }, 0);
+    var latest = plans.reduce(function (a, p) {
+      return (!a || (p.plan.target && p.plan.target > a)) ? p.plan.target : a;
+    }, null);
+    var horizonDays = latest ? Math.max(workingDaysBetween(new Date(), latest), 0) : 0;
+    var builders = ownerLoad().filter(function (l) { return l.owner !== 'Unassigned'; }).length;
+    var needed = horizonDays > 0 ? Math.ceil(totalDays / horizonDays) : null;
+    return {
+      plans: plans.sort(function (a, b) { return (b.plan.shortfall == null ? -999 : b.plan.shortfall) - (a.plan.shortfall == null ? -999 : a.plan.shortfall); }),
+      behind: behind, totalDays: totalDays, horizonDays: horizonDays, latest: latest,
+      builders: builders, capacity: builders * horizonDays, needed: needed,
+      gap: needed == null ? null : needed - builders
+    };
+  }
+
+
+  function monthLabel(key) {
+    var d = endOfMonthFromKey(key);
+    return d ? d.toLocaleDateString('en-IE', { month: 'short', year: 'numeric' }) : '—';
+  }
+
+  /* Total capacity over six months tells you very little: the binding constraint is
+     the near term, because deadlines are not evenly spread. This walks month by
+     month and finds the first point where the work due has outrun the days available. */
+  function phasedCase() {
+    var s = staffingCase();
+    var byMonth = {};
+    s.plans.forEach(function (p) {
+      var k = p.course.targetSort;
+      if (!k) return;
+      if (!byMonth[k]) byMonth[k] = { key: k, days: 0, courses: [] };
+      byMonth[k].days += p.plan.remainingDays;
+      byMonth[k].courses.push(p.course.name);
+    });
+    var cum = 0;
+    var rows = Object.keys(byMonth).sort().map(function (k) {
+      var g = byMonth[k];
+      cum += g.days;
+      var wd = Math.max(workingDaysBetween(new Date(), endOfMonthFromKey(+k)), 0);
+      var cap = wd * s.builders;
+      return {
+        key: +k, label: monthLabel(+k), courses: g.courses, days: g.days,
+        cumDemand: cum, capacity: cap, gap: cum - cap,
+        peopleNeeded: wd > 0 ? Math.ceil(cum / wd) : null
+      };
+    });
+    var crunch = rows.filter(function (r) { return r.gap > 0; })[0] || null;
+    return { rows: rows, crunch: crunch, builders: s.builders, behind: s.behind, plans: s.plans };
+  }
+
+  function staffingCard() {
+    var s = staffingCase();
+    var m = buildModel();
+    if (!s.plans.length) return '';
+
+    var rows = s.plans.slice(0, 14).map(function (p) {
+      var late = p.plan.shortfall > 0;
+      return '<tr><td class="client-cell">' + esc(p.course.name) + '</td>' +
+        '<td class="num">' + p.plan.remaining.length + '</td>' +
+        '<td class="num">' + p.plan.remainingDays + '</td>' +
+        '<td class="num">' + (p.plan.available == null ? '—' : p.plan.available) + '</td>' +
+        '<td>' + (late ? chip('risk', 'Short by ' + p.plan.shortfall + ' days', '!') : chip('done', 'Fits', '✓')) + '</td>' +
+        '<td class="note">Latest start ' + esc(fmtDate(p.plan.startBy)) + '</td></tr>';
+    }).join('');
+
+    var ph = phasedCase();
+    var verdict;
+    if (ph.crunch) {
+      verdict = '<b>The dates do not work, and the problem is the near term, not the total.</b> ' +
+        'By the end of ' + ph.crunch.label + ', ' + ph.crunch.cumDemand + ' build days are due and ' +
+        ph.builders + (ph.builders === 1 ? ' person has ' : ' people have ') + ph.crunch.capacity +
+        ' days between them. That is ' + ph.crunch.peopleNeeded + ' people building full time to hold the date — ' +
+        '<b>' + (ph.crunch.peopleNeeded - ph.builders) + ' more than we have</b>. Across the whole six months the ' +
+        'work fits, which is why a headline capacity figure will always say yes.';
+    } else {
+      verdict = '<b>The dates work at this pace.</b> ' + s.totalDays + ' build days are needed before ' +
+        fmtDate(s.latest) + ', against ' + s.capacity + ' days from ' + s.builders + ' people, and no month is oversubscribed.';
+    }
+
+    var phaseRows = ph.rows.map(function (r) {
+      return '<tr><td>' + esc(r.label) + '</td>' +
+        '<td class="num">' + r.courses.length + '</td>' +
+        '<td class="num">' + r.days + '</td>' +
+        '<td class="num">' + r.cumDemand + '</td>' +
+        '<td class="num">' + r.capacity + '</td>' +
+        '<td>' + (r.gap > 0 ? chip('risk', r.gap + ' days short', '!') : chip('done', 'Covered', '✓')) + '</td>' +
+        '<td class="num">' + (r.peopleNeeded == null ? '—' : r.peopleNeeded) + '</td></tr>';
+    }).join('');
+
+    var phaseTable = '<h3 class="sub-h" style="margin-top:18px">Month by month</h3>' +
+      '<div class="table-wrap"><table><thead><tr><th>By end of</th><th>Courses due</th><th>Build days due</th>' +
+      '<th>Running total</th><th>Days available</th><th>Verdict</th><th>People needed</th></tr></thead>' +
+      '<tbody>' + phaseRows + '</tbody></table></div>' +
+      '<p class="hint" style="margin-top:8px">Running total is every build day owed by that date, including work ' +
+      'carried over from earlier months. Days available is ' + ph.builders + ' people times the working days left ' +
+      'until then.</p>';
+
+    return '<section class="card"><div class="card-head"><h2>Can we hit the dates?</h2>' +
+      '<span class="hint">courses with a go-live target in the next six months</span></div>' +
+      (m.confirmed ? '' : '<div class="banner"><span aria-hidden="true">⚠</span><div>' +
+        '<b>The stage durations behind this have not been signed off.</b> They total ' + modelTotalDays() +
+        ' working days, about ' + (modelTotalDays() / 5).toFixed(1) + ' weeks, sized to the tracker’s own note that ' +
+        'EirGrid is a “4-6 week build when contract signed”. Everything here is arithmetic on top of them, so have the ' +
+        'Course Director confirm or correct them before this goes near a hiring decision.</div></div>') +
+      '<div class="banner info"><span aria-hidden="true">ℹ</span><div>' + verdict + '</div></div>' +
+      '<div class="table-wrap"><table><thead><tr>' +
+      '<th>Course</th><th>Stages left</th><th>Build days needed</th><th>Working days left</th>' +
+      '<th>Verdict</th><th>Latest possible start</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      phaseTable +
+      '<p class="hint" style="margin-top:10px">' + s.behind.length + ' of ' + s.plans.length +
+      ' cannot be finished by their target date at the standard pace, even with someone free to start today. ' +
+      'Working days exclude weekends only — holidays, meetings, review time and everything else are not deducted, ' +
+      'so these are best cases.</p></section>';
+  }
+
+
+  /* Per-course stage deadlines, back-scheduled from the go-live target. */
+  function planDetails(c) {
+    var m = buildModel();
+    var plan = coursePlan(c);
+    if (!plan.target) {
+      return '<details class="plan"><summary>Stage deadlines</summary>' +
+        '<p class="hint" style="margin:10px 0 0">No go-live target on this course, so there is nothing to work back from. ' +
+        'Put a date in the tracker and the ten stage deadlines appear here.</p></details>';
+    }
+    var rows = c.steps.map(function (st, i) {
+      var due = plan.deadlines[i];
+      var late = due && due < new Date() && st.key !== 'done';
+      return '<tr><td class="num">' + (i + 1) + '</td><td>' + esc(st.name) + '</td>' +
+        '<td><span data-tip="' + esc(expandInitials(m.roles[i] || '')) + '">' + esc(m.roles[i] || '—') + '</span></td>' +
+        '<td class="num">' + (m.days[i] || 0) + 'd</td>' +
+        '<td>' + (st.key === 'done'
+          ? chip('done', 'Complete', '✓')
+          : (due ? (late ? chip('risk', fmtDate(due), '!') : chip('ghost', fmtDate(due))) : '—')) + '</td></tr>';
+    }).join('');
+    return '<details class="plan"><summary>Stage deadlines — ' + plan.remainingDays + ' build days left, ' +
+      (plan.shortfall > 0 ? 'short by ' + plan.shortfall : (plan.available == null ? 'no target' : plan.available + ' working days available')) +
+      '</summary><div class="table-wrap" style="margin-top:10px"><table><thead><tr>' +
+      '<th>#</th><th>Stage</th><th>Who</th><th>Days</th><th>Due</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="hint" style="margin:8px 0 0">Worked back from the go-live target using the standard build. ' +
+      'Nobody has typed these dates — change a stage duration and they all move.</p></details>';
+  }
+
+  function buildModelCard() {
+    var m = buildModel();
+    var stages = state.data.courses.stageNames || [];
+    var cum = 0;
+    var rows = stages.map(function (name, i) {
+      cum += m.days[i] || 0;
+      return '<tr><td class="num">' + (i + 1) + '</td><td>' + esc(name) + '</td>' +
+        '<td><span data-tip="' + esc(expandInitials(m.roles[i] || '')) + '">' + esc(m.roles[i] || '—') + '</span></td>' +
+        '<td class="num"><input type="number" min="0" max="99" class="model-days" data-stage="' + i + '" value="' + (m.days[i] || 0) + '"></td>' +
+        '<td class="num">' + cum + '</td></tr>';
+    }).join('');
+
+    return '<section class="card"><div class="card-head"><h2>The standard build</h2>' +
+      '<span class="hint">' + modelTotalDays() + ' working days end to end — about ' + (modelTotalDays() / 5).toFixed(1) + ' weeks</span></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>#</th><th>Stage</th><th>Responsible</th>' +
+      '<th>Working days</th><th>Cumulative</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="filters" style="margin:14px 0 0">' +
+      '<button class="btn primary" id="saveModel">Save these durations</button>' +
+      '<button class="btn' + (m.confirmed ? ' amber' : '') + '" id="confirmModel">' +
+      (m.confirmed ? 'Signed off — click to unlock' : 'Mark as agreed with the Course Director') + '</button></div>' +
+      '<p class="hint" style="margin-top:10px">Change a number and every stage deadline, verdict and staffing figure ' +
+      'recalculates. Responsible roles follow the process diagram: discovery, script and QA with the Course Director, ' +
+      'the build itself with the Digital Learning Specialist.</p></section>';
+  }
+
   /* ---------- charts ---------- */
   function barChart(rows, opts) {
     opts = opts || {};
@@ -879,6 +1132,7 @@
         chip('ghost', c.currentStage) + (c.owner ? '<span class="chip ghost" data-tip="' + esc(expandInitials(c.owner)) + '">Owner: ' + esc(c.owner) + '</span>' : '') + '</div>' +
         stepStrip(c.steps) +
         progressBar(c.progress, c.stagesDone + '/' + c.stageCount + ' stages complete') +
+        planDetails(c) +
         (c.notes ? '<p class="note">' + esc(c.notes) + '</p>' : '') +
         (c.flags.length ? '<div class="chips">' + flagChips(c.flags) + '</div>' : '') +
         '</article>';
@@ -908,6 +1162,8 @@
     }
 
     return strip + capacityCard() + '<div style="height:16px"></div>' +
+      staffingCard() + '<div style="height:16px"></div>' +
+      buildModelCard() + '<div style="height:16px"></div>' +
       ruleNote('<b>Build order:</b> ' + esc(PRIORITY_RULE_BUILD)) + filters + body +
       (footnotes ? '<div style="margin-top:16px">' + footnotes + '</div>' : '');
   };
@@ -1104,6 +1360,103 @@
       '</section>';
   };
 
+
+  /* ---------- accountability ----------
+     Every time a go-live target moves between one import and the next it is
+     recorded here, with the reason and who agreed it. Blank reasons are kept and
+     shown as unexplained rather than quietly dropped — that is the point of it. */
+  function slips() { return (state.data.history && state.data.history.slips) || []; }
+
+  function targetChangesBetween(oldD, newD) {
+    var before = {}, out = [];
+    ((oldD.courses && oldD.courses.items) || []).forEach(function (c) { if (c.name) before[c.name] = c; });
+    ((newD.courses && newD.courses.items) || []).forEach(function (c) {
+      if (!c.name || !before[c.name]) return;
+      var was = before[c.name].target || '', now = c.target || '';
+      if (was !== now) {
+        out.push({
+          course: c.name, from: was || 'none', to: now || 'none',
+          owner: c.owner || before[c.name].owner || '', priority: c.priority
+        });
+      }
+    });
+    return out;
+  }
+
+  /* Stage deadlines that have already gone by with the stage unfinished. */
+  function missedDeadlines() {
+    var m = buildModel(), today = new Date(), out = [];
+    courses().forEach(function (c) {
+      if (!c.name || !c.targetSort || c.progress === 100) return;
+      var plan = coursePlan(c);
+      c.steps.forEach(function (st, i) {
+        var due = plan.deadlines[i];
+        if (!due || st.key === 'done' || due >= today) return;
+        out.push({
+          course: c.name, stage: (i + 1) + '. ' + st.name, who: m.roles[i] || '',
+          owner: c.owner || '', due: due, daysLate: workingDaysBetween(due, today)
+        });
+      });
+    });
+    return out.sort(function (a, b) { return b.daysLate - a.daysLate; });
+  }
+
+  views.accountability = function () {
+    var all = slips().slice().sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+    var unexplained = all.filter(function (s) { return !s.reason; });
+    var missed = missedDeadlines();
+
+    var byCourse = {};
+    all.forEach(function (s) { byCourse[s.course] = (byCourse[s.course] || 0) + 1; });
+    var repeat = Object.keys(byCourse).filter(function (k) { return byCourse[k] > 1; })
+      .sort(function (a, b) { return byCourse[b] - byCourse[a]; });
+
+    var kpis = '<div class="grid kpis">' +
+      kpi('Dates moved', String(all.length), 'recorded since tracking began', true) +
+      kpi('Moved without a reason', String(unexplained.length), 'nobody gave an explanation') +
+      kpi('Courses that moved more than once', String(repeat.length), repeat.length ? repeat.slice(0, 2).join(', ') : 'none yet') +
+      kpi('Stage deadlines already passed', String(missed.length), 'across ' + uniq(missed.map(function (x) { return x.course; })).length + ' courses') +
+      '</div>';
+
+    var log = all.length
+      ? '<div class="table-wrap"><table><thead><tr><th>Recorded</th><th>Course</th><th>Moved from</th>' +
+      '<th>Moved to</th><th>Owner</th><th>Reason given</th><th>Agreed with</th></tr></thead><tbody>' +
+      all.map(function (s) {
+        return '<tr><td>' + esc(dateLabel(s.date)) + '</td>' +
+          '<td class="client-cell">' + esc(s.course) + '</td>' +
+          '<td>' + esc(s.from) + '</td><td>' + esc(s.to) + '</td>' +
+          '<td><span data-tip="' + esc(expandInitials(s.owner)) + '">' + esc(s.owner || '—') + '</span></td>' +
+          '<td class="note">' + (s.reason ? esc(s.reason) : chip('risk', 'No reason given', '!')) + '</td>' +
+          '<td>' + esc(s.agreedBy || '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div>'
+      : '<p class="empty">No date changes recorded yet. The log starts from the next tracker you upload — ' +
+      'each moved go-live date will ask why before it is applied.</p>';
+
+    var missedTable = missed.length
+      ? '<div class="table-wrap"><table><thead><tr><th>Course</th><th>Stage</th><th>Responsible</th>' +
+      '<th>Course owner</th><th>Should have finished</th><th>Working days late</th></tr></thead><tbody>' +
+      missed.slice(0, 25).map(function (x) {
+        return '<tr><td class="client-cell">' + esc(x.course) + '</td><td>' + esc(x.stage) + '</td>' +
+          '<td><span data-tip="' + esc(expandInitials(x.who)) + '">' + esc(x.who) + '</span></td>' +
+          '<td><span data-tip="' + esc(expandInitials(x.owner)) + '">' + esc(x.owner || '—') + '</span></td>' +
+          '<td>' + esc(fmtDate(x.due)) + '</td>' +
+          '<td class="num">' + chip('risk', String(x.daysLate), '!') + '</td></tr>';
+      }).join('') + '</tbody></table></div>'
+      : '<p class="empty">Nothing is past a stage deadline.</p>';
+
+    return kpis + '<div style="height:16px"></div>' +
+      '<section class="card"><div class="card-head"><h2>Every date that has moved</h2>' +
+      '<span class="hint">captured at import, with the reason</span></div>' + log +
+      '<p class="hint" style="margin-top:10px">A go-live date cannot move quietly: the next upload compares the ' +
+      'new tracker against what is published and asks for an explanation for each change before applying it. ' +
+      'Rows marked “no reason given” were applied without one.</p></section>' +
+      '<div style="height:16px"></div>' +
+      '<section class="card"><div class="card-head"><h2>Stages already past their deadline</h2>' +
+      '<span class="hint">worked back from each go-live target</span></div>' + missedTable +
+      '<p class="hint" style="margin-top:10px">These are not recorded events — they are what the standard build ' +
+      'says should already have happened, given each course’s own go-live target.</p></section>';
+  };
+
   /* ---------- importer ---------- */
   views['import'] = function () {
     var sources = (state.data.meta && state.data.meta.sources) || {};
@@ -1120,8 +1473,29 @@
         '<button class="btn" id="clearPreview" style="margin-top:8px">Discard preview and show published data</button></div></div>'
       : '';
 
+    var moved = (state.pendingTargets || []).map(function (t, i) {
+      return '<div class="slip-ask"><div class="slip-ask-head"><b>' + esc(t.course) + '</b>' +
+        chip('ghost', esc(t.from) + '  →  ' + esc(t.to)) +
+        (t.owner ? '<span class="hint" data-tip="' + esc(expandInitials(t.owner)) + '">Owner: ' + esc(t.owner) + '</span>' : '') +
+        '</div>' +
+        '<div class="form-row"><label for="slipWhy' + i + '">Why has this date moved?</label>' +
+        '<input id="slipWhy' + i + '" data-slip="' + i + '" placeholder="e.g. client delayed sign-off on the script"></div>' +
+        '<div class="form-row"><label for="slipWho' + i + '">Agreed with</label>' +
+        '<input id="slipWho' + i + '" data-slipwho="' + i + '" placeholder="which director agreed the change"></div>' +
+        '</div>';
+    }).join('');
+
+    var movedPanel = moved
+      ? '<section class="card"><div class="card-head"><h2>' + state.pendingTargets.length +
+        (state.pendingTargets.length === 1 ? ' go-live date has moved' : ' go-live dates have moved') + '</h2>' +
+        '<span class="hint">recorded permanently on the Accountability page</span></div>' +
+        '<div class="banner"><span aria-hidden="true">⚠</span><div>Anything left blank is applied and logged as ' +
+        '<b>“no reason given”</b>. It is not blocked, but it is not forgotten either.</div></div>' +
+        moved + '</section><div style="height:16px"></div>'
+      : '';
+
     var pending = state.pending
-      ? '<section class="card"><div class="card-head"><h2>Ready to apply</h2><span class="hint">nothing has changed yet</span></div>' +
+      ? movedPanel + '<section class="card"><div class="card-head"><h2>Ready to apply</h2><span class="hint">nothing has changed yet</span></div>' +
         '<ul class="diff">' + (state.pendingDiff.length
           ? state.pendingDiff.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('')
           : '<li>No differences found — the file matches what is already published.</li>') + '</ul>' +
@@ -1264,6 +1638,7 @@
         if (messages.length) {
           state.pending = working;
           state.pendingDiff = diffData(state.data, working);
+          state.pendingTargets = targetChangesBetween(state.data, working);
         }
         render();
         var s = $('#importStatus');
@@ -1303,6 +1678,7 @@
     courses: ['Course builds', 'Where every programme is in the ten-stage build'],
     projects: ['Projects', 'Pre-pipeline opportunities and who owns them'],
     updates: ['Updates', 'What has changed lately'],
+    accountability: ['Accountability', 'Dates that have moved, why, and what is already late'],
     key: ['Key', 'What every symbol, initial and worked-out label on this platform means'],
     'import': ['Update data', 'Upload a tracker and publish the new numbers']
   };
@@ -1396,6 +1772,27 @@
       dz.addEventListener('drop', function (e) { handleFiles(e.dataTransfer.files); });
     }
 
+    on('#saveModel', 'click', function () {
+      var data = JSON.parse(JSON.stringify(state.data));
+      var current = buildModel();
+      var days = current.days.slice();
+      $$('.model-days').forEach(function (input) {
+        var i = +input.getAttribute('data-stage');
+        var v = parseInt(input.value, 10);
+        if (!isNaN(v) && v >= 0) days[i] = v;
+      });
+      data.buildModel = { days: days, roles: current.roles, confirmed: current.confirmed };
+      savePreview(data);
+      render();
+    });
+    on('#confirmModel', 'click', function () {
+      var data = JSON.parse(JSON.stringify(state.data));
+      var current = buildModel();
+      data.buildModel = { days: current.days, roles: current.roles, confirmed: !current.confirmed };
+      savePreview(data);
+      render();
+    });
+
     on('#applyPending', 'click', function () {
       var data = state.pending;
       if (!data) return;
@@ -1407,12 +1804,24 @@
         tag: 'Data',
         body: state.pendingDiff.length ? summary : 'Spreadsheets re-imported with no material changes.'
       });
+
+      /* log every moved go-live date, with whatever explanation was given */
+      var stamp = new Date().toISOString().slice(0, 10);
+      data.history = data.history || { slips: [] };
+      (state.pendingTargets || []).forEach(function (t, i) {
+        var why = $('#slipWhy' + i), who = $('#slipWho' + i);
+        data.history.slips.push({
+          date: stamp, course: t.course, from: t.from, to: t.to, owner: t.owner,
+          reason: why ? why.value.trim() : '', agreedBy: who ? who.value.trim() : ''
+        });
+      });
+      state.pendingTargets = [];
       savePreview(data);
       state.pending = null; state.pendingDiff = [];
       location.hash = '#/overview';
       render();
     });
-    on('#discardPending', 'click', function () { state.pending = null; state.pendingDiff = []; render(); });
+    on('#discardPending', 'click', function () { state.pending = null; state.pendingDiff = []; state.pendingTargets = []; render(); });
     on('#clearPreview', 'click', function () {
       if (confirm('Discard the local preview and go back to the published data?')) { clearPreview(); render(); }
     });
