@@ -246,15 +246,39 @@
      on the step its tracker stage implies — see STAGE_TO_STEP. That mapping is
      an interpretation, not something the spreadsheet states; it is shown on the
      page so anyone can challenge it. */
+  /* Roles exactly as the process diagram's ownership key defines them. */
+  var ROLES = [
+    ['ALL', 'Team', 'Opportunity spotting, introductions and referrals.'],
+    ['AQ', 'Course Director', 'Discovery, training needs analysis, learning objectives, solution design and programme oversight.'],
+    ['OG', 'Business Development', 'Qualification, commercial discussions, relationship management, proposal approval and contracting.'],
+    ['TG', 'Operational Support', 'Process governance, proposal coordination, commercial documentation and mobilisation support.'],
+    ['OM', 'Digital Learning Specialist', 'Course build, LMS configuration, learner experience design and programme implementation.'],
+    ['JM', 'Project Coordinator', 'Makes sure information is shared, actions are tracked and people have what they need to progress work.'],
+    ['BI', 'Learning Support', 'Learning administration and implementation support to the Course Director and Digital Learning Specialist.']
+  ];
+  function roleName(initials) {
+    var found = ROLES.filter(function (r) { return r[0] === String(initials).toUpperCase().trim(); })[0];
+    return found ? found[1] : '';
+  }
+  /* "AQ/OM" -> "AQ — Course Director · OM — Digital Learning Specialist" */
+  function expandInitials(s) {
+    var parts = String(s || '').split(/[\/,]| and /).map(function (p) { return p.trim(); }).filter(Boolean);
+    var out = parts.map(function (p) {
+      var name = roleName(p);
+      return name ? p + ' — ' + name : p;
+    });
+    return out.join(' · ');
+  }
+
   var PROCESS = [
     { id: '1', name: 'Initial Engagement', detail: 'Opportunity spotting, introductions and referrals.', lead: 'ALL' },
-    { id: '2', name: 'Qualification', detail: 'Validate opportunity and confirm potential fit and priorities.', lead: 'OG' },
-    { id: '3', name: 'Discovery & TNA', detail: 'Understand the client environment, needs and capability gaps.', lead: 'AQ' },
-    { id: '4', name: 'Discovery Summary', detail: 'Summarise findings, learning objectives and indicative approaches.', lead: 'AQ' },
-    { id: 'G1', name: 'Commercial Alignment', detail: 'Gate: agreement to progress to commercial discussions.', lead: 'OG', gate: true },
+    { id: '2', name: 'Qualification', detail: 'Validate the opportunity and confirm potential fit and priorities.', lead: 'OG' },
+    { id: '3', name: 'Discovery & Training Needs Analysis', detail: 'Understand the client environment, needs and capability gaps.', lead: 'AQ' },
+    { id: '4', name: 'Discovery Summary', detail: 'Summarise findings, learning objectives and indicative approaches, as a high-level proposal.', lead: 'AQ' },
+    { id: 'G1', name: 'Gate 1: Commercial Alignment', detail: 'Checkpoint — agreement to progress to commercial discussions.', lead: 'OG', gate: true },
     { id: '5', name: 'Commercial Scoping & Budget', detail: 'Agree scope, budget parameters, timelines and delivery preferences.', lead: 'OG' },
-    { id: '6', name: 'Solution Design', detail: 'Design the detailed solution aligned to agreed commercial parameters.', lead: 'AQ' },
-    { id: 'G2', name: 'Delivery Readiness', detail: 'Gate: internal approval to proceed to proposal and delivery planning.', lead: 'OG', gate: true },
+    { id: '6', name: 'Solution Design', detail: 'Design the detailed solution, aligned to the agreed commercial parameters.', lead: 'AQ' },
+    { id: 'G2', name: 'Gate 2: Delivery Readiness', detail: 'Checkpoint — internal approval to proceed to proposal and delivery planning.', lead: 'OG', gate: true },
     { id: '7', name: 'Final Proposal & Contracting', detail: 'Final proposal, commercial agreement and signed contract.', lead: 'OG' },
     { id: '8', name: 'Programme Build & Setup', detail: 'Build and configure the programme and prepare for launch.', lead: 'AQ' },
     { id: '9', name: 'Programme Delivery', detail: 'Deliver the programme and provide ongoing learner support.', lead: 'AQ' },
@@ -276,14 +300,20 @@
   function processCard(list) {
     var groups = processGroups(list);
     var open = state.filters.overviewStep;
+    var tracked = {};
+    Object.keys(STAGE_TO_STEP).forEach(function (k) { tracked[STAGE_TO_STEP[k]] = true; });
+
     var boxes = groups.map(function (g) {
       var n = g.deals.length;
+      var isTracked = !!tracked[g.step.id];
+      var tip = g.step.detail + ' Led by ' + expandInitials(g.step.lead) + '.' +
+        (isTracked ? '' : ' The tracker does not record this step, so no client can be counted here.');
       return '<button class="pstep' + (g.step.gate ? ' gate' : '') + (open === g.step.id ? ' open' : '') +
-        (n ? '' : ' vacant') + '" data-step="' + g.step.id + '" data-tip="' + esc(g.step.detail + ' · Lead: ' + g.step.lead) + '"' +
+        (isTracked ? (n ? '' : ' vacant') : ' untracked') + '" data-step="' + g.step.id + '" data-tip="' + esc(tip) + '"' +
         ' aria-expanded="' + (open === g.step.id) + '">' +
-        '<span class="pstep-n">' + (g.step.gate ? '★ ' + g.step.id : g.step.id) + '</span>' +
-        '<span class="pstep-name">' + esc(g.step.name) + '</span>' +
-        '<span class="pstep-count">' + n + '</span>' +
+        '<span class="pstep-n">' + esc(g.step.id) + '</span>' +
+        '<span class="pstep-name">' + esc(g.step.name.replace(/^Gate \d: /, '')) + '</span>' +
+        '<span class="pstep-count">' + (isTracked ? n : '–') + '</span>' +
         '</button>';
     }).join('<span class="pstep-arrow" aria-hidden="true">›</span>');
 
@@ -307,11 +337,17 @@
     }
 
     return '<section class="card"><div class="card-head"><h2>Sales &amp; programme development process</h2>' +
-      '<span class="hint">click a step to see who is there</span></div>' +
+      '<span class="hint">click a step to see which clients are there</span></div>' +
       '<div class="process">' + boxes + '</div>' + panel +
-      '<p class="hint" style="margin-top:12px">Placed from each deal’s tracker stage: ' +
-      'Lead&nbsp;→&nbsp;1, Scoping&nbsp;→&nbsp;3, Proposal&nbsp;→&nbsp;5, Contracting&nbsp;→&nbsp;7, Contracted&nbsp;→&nbsp;8, Live&nbsp;→&nbsp;9. ' +
-      'The tracker records six stages, so the steps in between are inferred rather than recorded.</p>' +
+      '<div class="legend" style="margin-top:14px">' +
+      '<span><i style="background:var(--p1)"></i>Numbered step</span>' +
+      '<span><i style="background:var(--amber)"></i>Gate — a checkpoint that must be passed</span>' +
+      '<span><i style="background:repeating-linear-gradient(45deg,#fff,#fff 3px,#EFECF1 3px,#EFECF1 6px)"></i>Shows “–” because the tracker does not record this step</span>' +
+      '</div>' +
+      '<p class="hint" style="margin-top:10px">The pipeline tracker records six stages, this process has twelve boxes. ' +
+      'Clients are placed by their tracker stage: Lead&nbsp;→&nbsp;1, Scoping&nbsp;→&nbsp;3, Proposal&nbsp;→&nbsp;5, ' +
+      'Contracting&nbsp;→&nbsp;7, Contracted&nbsp;→&nbsp;8, Live&nbsp;→&nbsp;9. The remaining boxes show “–” rather than zero, ' +
+      'because nothing in the spreadsheet says who is sitting at them. Add a step column to the tracker and they fill in.</p>' +
       '</section>';
   }
 
@@ -394,10 +430,10 @@
   }
 
   var BUILD_TIERS = {
-    1: { label: 'Signed mandate', kind: 'done', glyph: '1' },
-    2: { label: 'High-priority new client', kind: 'brand', glyph: '2' },
-    3: { label: 'ECI', kind: 'amber', glyph: '3' },
-    4: { label: 'Market-led', kind: 'wait', glyph: '4' }
+    1: { label: 'Active clients with a signed mandate', kind: 'done', glyph: '1' },
+    2: { label: 'High priority new clients', kind: 'brand', glyph: '2' },
+    3: { label: 'What ECI want', kind: 'amber', glyph: '3' },
+    4: { label: 'What we think the market wants', kind: 'wait', glyph: '4' }
   };
 
   function buildTier(course, dealList) {
@@ -443,6 +479,88 @@
         priorityRank(a.course.priority) - priorityRank(b.course.priority) ||
         b.course.progress - a.course.progress;
     });
+  }
+
+  /* ---------- build capacity ----------
+     Who is carrying how much, and where work is queueing. Every number here is
+     counted from the build tracker itself — no estimates, no assumptions about
+     how long anything takes. What it cannot yet show is speed: that needs more
+     than one snapshot of the tracker, which is noted on the page rather than
+     guessed at. */
+  function ownerLoad() {
+    var load = {};
+    courses().forEach(function (c) {
+      if (!c.name || !c.stagesActive) return;
+      var names = (c.owner || 'Unassigned').split(/[\/,]| and /).map(function (s) { return s.trim(); }).filter(Boolean);
+      names.forEach(function (n) {
+        if (!load[n]) load[n] = { owner: n, active: 0, courses: [] };
+        load[n].active++;
+        load[n].courses.push(c.name);
+      });
+    });
+    return Object.keys(load).map(function (k) { return load[k]; })
+      .sort(function (a, b) { return b.active - a.active; });
+  }
+
+  function stageQueue() {
+    var stages = state.data.courses.stageNames || [];
+    var counts = stages.map(function (s, i) { return { name: s, index: i, active: 0, waiting: 0 }; });
+    courses().forEach(function (c) {
+      if (!c.name) return;
+      c.steps.forEach(function (s, i) {
+        if (!counts[i]) return;
+        if (s.key === 'active') counts[i].active++;
+        else if (s.key === 'pending') counts[i].waiting++;
+      });
+    });
+    return counts;
+  }
+
+  function capacityCard() {
+    var load = ownerLoad();
+    var inFlight = courses().filter(function (c) { return c.name && c.stagesActive > 0; });
+    var stalled = courses().filter(function (c) {
+      return c.name && !c.stagesActive && c.stagesDone > 0 && c.progress < 100;
+    });
+    var maxLoad = Math.max.apply(null, load.map(function (l) { return l.active; }).concat([1]));
+
+    var rows = load.map(function (l) {
+      return {
+        label: l.owner + (roleName(l.owner) ? '' : ''),
+        value: l.active,
+        valueLabel: l.active + (l.active === 1 ? ' build' : ' builds'),
+        color: l.active > 4 ? '#C62828' : (l.active > 2 ? RAMP[4] : RAMP[3]),
+        tip: (roleName(l.owner) ? l.owner + ' — ' + roleName(l.owner) + '. ' : '') + 'Currently on: ' + l.courses.join(', ')
+      };
+    });
+
+    var queue = stageQueue().filter(function (s) { return s.active || s.waiting; }).map(function (s) {
+      return {
+        label: (s.index + 1) + '. ' + s.name,
+        value: s.active,
+        valueLabel: s.active + ' in progress',
+        subLabel: s.waiting ? s.waiting + ' queued' : '',
+        color: RAMP[3],
+        tip: s.active + ' course(s) being worked on at this stage, ' + s.waiting + ' waiting to reach it.'
+      };
+    });
+
+    return '<section class="card"><div class="card-head"><h2>Build capacity</h2>' +
+      '<span class="hint">counted from the build tracker</span></div>' +
+      '<div class="grid two">' +
+      '<div><h3 class="sub-h">Builds each person is on right now</h3>' +
+      (rows.length ? barChart(rows) : '<p class="empty">Nobody is recorded as building anything.</p>') +
+      '<p class="hint" style="margin-top:10px">A person appears once for every course where a stage is marked in progress. ' +
+      'Owners come from the “Owner:” note at the end of each row in the build tracker.</p></div>' +
+      '<div><h3 class="sub-h">Where the work is stacked up</h3>' +
+      (queue.length ? barChart(queue) : '<p class="empty">No stages in progress.</p>') +
+      '</div></div>' +
+      '<div class="banner info" style="margin-top:16px"><span aria-hidden="true">ℹ</span><div>' +
+      '<b>' + inFlight.length + ' courses have work in progress right now</b>, against the build tracker’s own note that ' +
+      '“4 concurrent builds is not workable”. ' + (stalled.length ? stalled.length + ' more are part-built with no stage currently active. ' : '') +
+      'This page can show how much is being carried, but not how fast it moves — that needs the tracker saved week on week, ' +
+      'which nothing does yet.</div></div>' +
+      '</section>';
   }
 
   function ruleNote(text) {
@@ -758,7 +876,7 @@
         (tierMeta ? '<div class="chips">' + chip(tierMeta.kind, tierMeta.glyph + '. ' + tierMeta.label) + '</div>' +
           '<p class="note tier-why">' + esc(t.why) + '</p>' : '') +
         '<div class="chips">' + targetChip(c.target, c.targetSort, c.provisional) +
-        chip('ghost', c.currentStage) + (c.owner ? chip('ghost', 'Owner: ' + c.owner) : '') + '</div>' +
+        chip('ghost', c.currentStage) + (c.owner ? '<span class="chip ghost" data-tip="' + esc(expandInitials(c.owner)) + '">Owner: ' + esc(c.owner) + '</span>' : '') + '</div>' +
         stepStrip(c.steps) +
         progressBar(c.progress, c.stagesDone + '/' + c.stageCount + ' stages complete') +
         (c.notes ? '<p class="note">' + esc(c.notes) + '</p>' : '') +
@@ -789,7 +907,8 @@
       }).join('');
     }
 
-    return strip + ruleNote('<b>Build order:</b> ' + esc(PRIORITY_RULE_BUILD)) + filters + body +
+    return strip + capacityCard() + '<div style="height:16px"></div>' +
+      ruleNote('<b>Build order:</b> ' + esc(PRIORITY_RULE_BUILD)) + filters + body +
       (footnotes ? '<div style="margin-top:16px">' + footnotes + '</div>' : '');
   };
 
@@ -887,6 +1006,101 @@
       (list.length ? '<div class="timeline">' + list.map(updateRow).join('') + '</div>'
         : '<p class="empty">Nothing posted yet. Updates you write on the <a href="#/import">Update data</a> tab appear here, ' +
         'along with an automatic note each time a new spreadsheet is imported.</p>') +
+      '</section>';
+  };
+
+  views.key = function () {
+    var stages = (state.data.courses.stageNames || []);
+    var milestones = (state.data.dealPlans && state.data.dealPlans.stageNames) || [];
+
+    var roleRows = ROLES.map(function (r) {
+      return '<tr><td><b>' + esc(r[0]) + '</b></td><td>' + esc(r[1]) + '</td><td class="note">' + esc(r[2]) + '</td></tr>';
+    }).join('');
+
+    var flagRows = [
+      ['Waiting on others', 'the note says awaiting, waiting on or waiting for something'],
+      ['Pending', 'the note contains “pending”'],
+      ['Contract / sign-off', 'the note mentions a contract, agreement, sign-off, MOA or a tender dependency'],
+      ['Stalled', 'the note says frozen, inactive, idle, dead, “no further updates” or “not much traction”'],
+      ['Needs chasing', 'the note says chase, nudge, follow up or reach out'],
+      ['Under review', 'the note says under review, review needed, QA needed or feasibility'],
+      ['Revenue unquantified', 'the note says unquantified, revenue TBC, “need to price” or “commercialise”']
+    ].map(function (f) {
+      return '<tr><td>' + chip('wait', f[0]) + '</td><td class="note">Shown when ' + esc(f[1]) + '.</td></tr>';
+    }).join('');
+
+    return '<div class="banner info"><span aria-hidden="true">ℹ</span><div>' +
+      'Everything on this platform is counted from two spreadsheets — the Course Build Tracker and the Sales Pipeline Tracker. ' +
+      'Nothing is estimated. Where something is worked out rather than recorded, it says so on the page and is explained here.' +
+      '</div></div>' +
+
+      '<section class="card"><div class="card-head"><h2>Who the initials are</h2>' +
+      '<span class="hint">from the ownership key in the process diagram</span></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Initials</th><th>Role</th><th>Responsible for</th></tr></thead>' +
+      '<tbody>' + roleRows + '</tbody></table></div></section>' +
+
+      '<div style="height:16px"></div>' +
+      '<div class="grid two">' +
+      '<section class="card"><div class="card-head"><h2>The ten build stages</h2>' +
+      '<span class="hint">every course runs through these in order</span></div>' +
+      '<ol class="plain-list">' + stages.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>' +
+      '<p class="hint">A course is shown at the first stage marked in progress. If none is in progress, ' +
+      'it is shown at the next stage still to be done.</p></section>' +
+
+      '<section class="card"><div class="card-head"><h2>The five deal milestones</h2>' +
+      '<span class="hint">from the Deal Stage Plans sheet</span></div>' +
+      '<ol class="plain-list">' + milestones.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ol>' +
+      '<p class="hint">Separate from the six-stage pipeline column, which is what the process strip on the ' +
+      'Overview uses.</p></section></div>' +
+
+      '<div style="height:16px"></div>' +
+      '<section class="card"><div class="card-head"><h2>What the marks mean</h2></div>' +
+      '<div class="table-wrap"><table><tbody>' +
+      '<tr><td><span class="step done">✓</span></td><td><b>Complete</b></td><td class="note">The tracker cell says Complete.</td></tr>' +
+      '<tr><td><span class="step active">▶</span></td><td><b>In progress</b></td><td class="note">The cell says In Progress, WIP, Started, Scoping or Proposal Submitted.</td></tr>' +
+      '<tr><td><span class="step pending">○</span></td><td><b>To be confirmed</b></td><td class="note">The cell says TBC or Pending.</td></tr>' +
+      '<tr><td><span class="step none">·</span></td><td><b>Blank</b></td><td class="note">The cell is empty — not started, or not applicable to this course.</td></tr>' +
+      '<tr><td>' + chip('risk', 'Mar 2026', '!') + '</td><td><b>Date passed</b></td><td class="note">The target date has gone by and the work is not finished.</td></tr>' +
+      '<tr><td>' + chip('amber', 'Aug 2026') + '</td><td><b>Due soon</b></td><td class="note">Target date falls within the next two months.</td></tr>' +
+      '<tr><td>' + chip('ghost', 'Q4 2026 (provisional)') + '</td><td><b>Provisional</b></td><td class="note">Marked with an asterisk in the tracker — subject to contract signing.</td></tr>' +
+      '</tbody></table></div></section>' +
+
+      '<div style="height:16px"></div>' +
+      '<section class="card"><div class="card-head"><h2>Flags read from the notes column</h2>' +
+      '<span class="hint">worked out from wording, not recorded as data</span></div>' +
+      '<div class="table-wrap"><table><tbody>' + flagRows + '</tbody></table></div>' +
+      '<p class="hint" style="margin-top:10px">These are a reading aid, not a status. If a flag looks wrong, ' +
+      'the wording in the tracker is what to change.</p></section>' +
+
+      '<div style="height:16px"></div>' +
+      '<div class="grid two">' +
+      '<section class="card"><div class="card-head"><h2>How sales priority is worked out</h2></div>' +
+      ruleNote(esc(PRIORITY_RULE_SALES)) +
+      '<p class="note">Each deal scores half on how close it is to completion (its stage out of six) and half on ' +
+      'revenue potential. Revenue is log-scaled, so one very large deal does not push everything else to the bottom. ' +
+      'Deals with no revenue figure score zero on that half and are labelled, rather than being quietly ranked last. ' +
+      'Deals marked Dead are left out.</p></section>' +
+
+      '<section class="card"><div class="card-head"><h2>How build priority is worked out</h2></div>' +
+      ruleNote(esc(PRIORITY_RULE_BUILD)) +
+      '<p class="note">Courses are matched to a pipeline client by name to decide which band they fall in. ' +
+      'The match is printed on every course card so a wrong one is obvious. Known shorthand is linked deliberately: ' +
+      '<b>PFAI</b> to Ireland Professional Players Assoc., <b>CU</b> to Credit Unions, and ' +
+      '<b>EirGrid</b> to Analytics Institute — the last of these because the build tracker itself notes ' +
+      '“Analytics Institute now named EirGrid”.</p></section></div>' +
+
+      '<div style="height:16px"></div>' +
+      '<section class="card"><div class="card-head"><h2>Where the data comes from</h2></div>' +
+      '<div class="list">' +
+      '<div class="list-row"><div class="lr-main"><div class="lr-title">Course Build Tracker</div>' +
+      '<div class="lr-sub">Course builds and the project register</div></div>' +
+      '<div class="lr-side">as at ' + esc(state.data.courses.asAt || 'unknown') + '</div></div>' +
+      '<div class="list-row"><div class="lr-main"><div class="lr-title">Sales Pipeline Tracker</div>' +
+      '<div class="lr-sub">Deals, deal stage plans and the funnel summary</div></div>' +
+      '<div class="lr-side">as at ' + esc(state.data.pipeline.asAt || 'unknown') + '</div></div>' +
+      '</div>' +
+      '<p class="hint" style="margin-top:12px">Both are read straight from the spreadsheets. Anything this platform ' +
+      'works out for itself — process placement, priority order, flags, capacity — is explained on this page.</p>' +
       '</section>';
   };
 
@@ -1089,6 +1303,7 @@
     courses: ['Course builds', 'Where every programme is in the ten-stage build'],
     projects: ['Projects', 'Pre-pipeline opportunities and who owns them'],
     updates: ['Updates', 'What has changed lately'],
+    key: ['Key', 'What every symbol, initial and worked-out label on this platform means'],
     'import': ['Update data', 'Upload a tracker and publish the new numbers']
   };
 

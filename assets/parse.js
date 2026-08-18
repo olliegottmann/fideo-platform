@@ -119,6 +119,12 @@
     var s = S(v);
     return s === '' || /^\*/.test(s) || /^total\b/i.test(s) || /^yellow cells/i.test(s) || /^projects at pre-pipeline/i.test(s);
   }
+  /* The August 2026 tracker groups rows under coloured banner rows —
+     "🔴 HIGH PRIORITY" and friends. They are separators, not courses. */
+  function isBandRow(v) {
+    var s = S(v).replace(/[^\x20-\x7E]/g, '').trim();
+    return /^(high|medium|low)\s*priority$/i.test(s);
+  }
 
   /* --- Course Build Tracker ------------------------------------------- */
   function parseCourses(XLSX, wb) {
@@ -136,6 +142,7 @@
       var row = rows[r] || [];
       var title = S(row[0]);
       if (isFootnote(title)) { if (title) footnotes.push(title); continue; }
+      if (isBandRow(title)) continue;
       var steps = [], done = 0, active = 0;
       for (var i = 0; i < stageNames.length; i++) {
         var st = stepStatus(row[2 + i]);

@@ -1,8 +1,8 @@
-/* Fideo Global dashboard data — generated 2026-08-18T12:51:42.394Z
+/* Fideo Global dashboard data — generated 2026-08-18T14:27:25.495Z
    Regenerate by uploading a tracker on the "Update data" tab, or run: node tools/seed.js */
 window.FIDEO_DATA = {
   "meta": {
-    "generatedAt": "2026-08-18T12:51:42.394Z",
+    "generatedAt": "2026-08-18T14:27:25.495Z",
     "sources": {
       "Fideo_Course_Build_Tracker.xlsx": {
         "file": "Fideo_Course_Build_Tracker.xlsx",
@@ -14,10 +14,18 @@ window.FIDEO_DATA = {
       },
       "Fideo_Pipeline_Tracker.xlsx": {
         "file": "Fideo_Pipeline_Tracker.xlsx",
-        "importedAt": "2026-08-18T12:51:42.394Z",
+        "importedAt": "2026-08-18T14:27:25.495Z",
         "sections": [
           "Pipeline deals (30)",
           "Deal stage plans (21)"
+        ]
+      },
+      "Fideo_Course_Build_Tracker_updated 18.08.xlsx": {
+        "file": "Fideo_Course_Build_Tracker_updated 18.08.xlsx",
+        "importedAt": "2026-08-18T14:27:25.495Z",
+        "sections": [
+          "Course builds (24)",
+          "Projects (6)"
         ]
       }
     }
@@ -1329,7 +1337,7 @@ window.FIDEO_DATA = {
     "sheet": "Deal Stage Plans"
   },
   "courses": {
-    "asAt": "25 Jul 2026",
+    "asAt": "13 August 2026",
     "stageNames": [
       "Data Gathering",
       "Overview & Timeframes",
@@ -1343,6 +1351,140 @@ window.FIDEO_DATA = {
       "Go-Live"
     ],
     "items": [
+      {
+        "name": "Cyber Resilience Act - #01 (Crab Nebula)",
+        "priority": "HIGH",
+        "steps": [
+          {
+            "name": "Data Gathering",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Overview & Timeframes",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Create Script",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "On-Demand Content",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Activities",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Academy Setup",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Timetables",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Tutor Recording",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "QA",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Go-Live",
+            "key": "pending",
+            "label": "TBC"
+          }
+        ],
+        "stagesDone": 9,
+        "stagesActive": 0,
+        "stageCount": 10,
+        "progress": 90,
+        "currentStage": "Next up: Go-Live",
+        "target": "End Aug 2026",
+        "targetSort": 202608,
+        "provisional": false,
+        "owner": "",
+        "notes": "Stage 5 QA Complete. OM to make changes based on crab feedback, and then populate Academy",
+        "flags": []
+      },
+      {
+        "name": "Fincrime (previously AMLi Chapters)",
+        "priority": "HIGH",
+        "steps": [
+          {
+            "name": "Data Gathering",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Overview & Timeframes",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Create Script",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "On-Demand Content",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Activities",
+            "key": "active",
+            "label": "WIP"
+          },
+          {
+            "name": "Academy Setup",
+            "key": "active",
+            "label": "WIP"
+          },
+          {
+            "name": "Timetables",
+            "key": "active",
+            "label": "WIP"
+          },
+          {
+            "name": "Tutor Recording",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "QA",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Go-Live",
+            "key": "none",
+            "label": ""
+          }
+        ],
+        "stagesDone": 4,
+        "stagesActive": 3,
+        "stageCount": 10,
+        "progress": 40,
+        "currentStage": "In progress: Activities",
+        "target": "End Aug 2026",
+        "targetSort": 202608,
+        "provisional": false,
+        "owner": "AQ/OM/Ben",
+        "notes": "Ben updating names and adding ECI branding— editing, downloading, reuploading and chaptering in progress. Major editing done. Pre-records TBC and marketing required. Launching end August. Owner: AQ/OM/Ben",
+        "flags": []
+      },
       {
         "name": "IFR Training Programme - Part I",
         "priority": "HIGH",
@@ -1407,7 +1549,7 @@ window.FIDEO_DATA = {
         "targetSort": 202610,
         "provisional": false,
         "owner": "AQ/OM",
-        "notes": "OG's 14 IFR videos completing EOD tomorrow — mostly prepped. QA needed from owner side. Pending UoL partnership agreement. Launch Oct 26. Owner: AQ/OM",
+        "notes": "OG's 14 IFR videos completed, small changes. QA needed from owner side. Pending UoL partnership agreement. Launch Oct 26. Owner: AQ/OM",
         "flags": [
           "Pending",
           "Contract / sign-off",
@@ -1485,7 +1627,7 @@ window.FIDEO_DATA = {
         ]
       },
       {
-        "name": "Cyber Resilience Act - #01 (Crab Nebula)",
+        "name": "India On Demand Courses - #1 & #2",
         "priority": "HIGH",
         "steps": [
           {
@@ -1505,53 +1647,51 @@ window.FIDEO_DATA = {
           },
           {
             "name": "On-Demand Content",
-            "key": "done",
-            "label": "Complete"
+            "key": "active",
+            "label": "WIP"
           },
           {
             "name": "Activities",
-            "key": "done",
-            "label": "Complete"
+            "key": "active",
+            "label": "WIP"
           },
           {
             "name": "Academy Setup",
-            "key": "done",
-            "label": "Complete"
+            "key": "none",
+            "label": ""
           },
           {
             "name": "Timetables",
-            "key": "done",
-            "label": "Complete"
+            "key": "none",
+            "label": ""
           },
           {
             "name": "Tutor Recording",
-            "key": "done",
-            "label": "Complete"
+            "key": "none",
+            "label": ""
           },
           {
             "name": "QA",
-            "key": "done",
-            "label": "Complete"
+            "key": "none",
+            "label": ""
           },
           {
             "name": "Go-Live",
-            "key": "pending",
-            "label": "TBC"
+            "key": "none",
+            "label": ""
           }
         ],
-        "stagesDone": 9,
-        "stagesActive": 0,
+        "stagesDone": 3,
+        "stagesActive": 2,
         "stageCount": 10,
-        "progress": 90,
-        "currentStage": "Next up: Go-Live",
+        "progress": 30,
+        "currentStage": "In progress: On-Demand Content",
         "target": "End Aug 2026",
         "targetSort": 202608,
         "provisional": false,
         "owner": "AQ/OM",
-        "notes": "Stage 5 QA — AQ conducting final content check this week. Then uploading to Academy. Pending Crab Nebula review — ready to launch end August. Owner: AQ/OM",
-        "flags": [
-          "Pending"
-        ]
+        "notes": "Stage 4/5 — AQ/OM started on production on #1 & #2. End August. Owner: AQ/OM",
+        "flags": []
       },
       {
         "name": "Solance Training Programme",
@@ -1621,73 +1761,6 @@ window.FIDEO_DATA = {
         "flags": [
           "Waiting on others"
         ]
-      },
-      {
-        "name": "Financial & Digital Literacy",
-        "priority": "HIGH",
-        "steps": [
-          {
-            "name": "Data Gathering",
-            "key": "done",
-            "label": "Complete"
-          },
-          {
-            "name": "Overview & Timeframes",
-            "key": "done",
-            "label": "Complete"
-          },
-          {
-            "name": "Create Script",
-            "key": "pending",
-            "label": "TBC"
-          },
-          {
-            "name": "On-Demand Content",
-            "key": "pending",
-            "label": "TBC"
-          },
-          {
-            "name": "Activities",
-            "key": "pending",
-            "label": "TBC"
-          },
-          {
-            "name": "Academy Setup",
-            "key": "pending",
-            "label": "TBC"
-          },
-          {
-            "name": "Timetables",
-            "key": "pending",
-            "label": "TBC"
-          },
-          {
-            "name": "Tutor Recording",
-            "key": "pending",
-            "label": "TBC"
-          },
-          {
-            "name": "QA",
-            "key": "pending",
-            "label": "TBC"
-          },
-          {
-            "name": "Go-Live",
-            "key": "pending",
-            "label": "TBC"
-          }
-        ],
-        "stagesDone": 2,
-        "stagesActive": 0,
-        "stageCount": 10,
-        "progress": 20,
-        "currentStage": "Next up: Create Script",
-        "target": "Q4 2026",
-        "targetSort": 202612,
-        "provisional": false,
-        "owner": "AQ/OM",
-        "notes": "Stage 4 not started. On track Q4. Owner: AQ/OM",
-        "flags": []
       },
       {
         "name": "PFAI Training Programme",
@@ -1760,6 +1833,209 @@ window.FIDEO_DATA = {
         ]
       },
       {
+        "name": "India On Demand Courses - #3 & #4",
+        "priority": "HIGH",
+        "steps": [
+          {
+            "name": "Data Gathering",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Overview & Timeframes",
+            "key": "active",
+            "label": "Started"
+          },
+          {
+            "name": "Create Script",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "On-Demand Content",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Activities",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Academy Setup",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Timetables",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Tutor Recording",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "QA",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Go-Live",
+            "key": "none",
+            "label": ""
+          }
+        ],
+        "stagesDone": 0,
+        "stagesActive": 1,
+        "stageCount": 10,
+        "progress": 0,
+        "currentStage": "In progress: Overview & Timeframes",
+        "target": "End Sep 2026",
+        "targetSort": 202609,
+        "provisional": false,
+        "owner": "AQ/OM",
+        "notes": "Stage 2 not started — waiting approval. End September. Owner: AQ/OM",
+        "flags": [
+          "Waiting on others"
+        ]
+      },
+      {
+        "name": "Financial & Digital Literacy",
+        "priority": "HIGH",
+        "steps": [
+          {
+            "name": "Data Gathering",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Overview & Timeframes",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Create Script",
+            "key": "pending",
+            "label": "TBC"
+          },
+          {
+            "name": "On-Demand Content",
+            "key": "pending",
+            "label": "TBC"
+          },
+          {
+            "name": "Activities",
+            "key": "pending",
+            "label": "TBC"
+          },
+          {
+            "name": "Academy Setup",
+            "key": "pending",
+            "label": "TBC"
+          },
+          {
+            "name": "Timetables",
+            "key": "pending",
+            "label": "TBC"
+          },
+          {
+            "name": "Tutor Recording",
+            "key": "pending",
+            "label": "TBC"
+          },
+          {
+            "name": "QA",
+            "key": "pending",
+            "label": "TBC"
+          },
+          {
+            "name": "Go-Live",
+            "key": "pending",
+            "label": "TBC"
+          }
+        ],
+        "stagesDone": 2,
+        "stagesActive": 0,
+        "stageCount": 10,
+        "progress": 20,
+        "currentStage": "Next up: Create Script",
+        "target": "Q4 2026",
+        "targetSort": 202612,
+        "provisional": false,
+        "owner": "AQ/OM",
+        "notes": "Stage 4 not started. On track Q4. Owner: AQ/OM",
+        "flags": []
+      },
+      {
+        "name": "CU - AML",
+        "priority": "HIGH",
+        "steps": [
+          {
+            "name": "Data Gathering",
+            "key": "active",
+            "label": "Proposal Submitted"
+          },
+          {
+            "name": "Overview & Timeframes",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "Create Script",
+            "key": "done",
+            "label": "Complete"
+          },
+          {
+            "name": "On-Demand Content",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Activities",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Academy Setup",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Timetables",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Tutor Recording",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "QA",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Go-Live",
+            "key": "none",
+            "label": ""
+          }
+        ],
+        "stagesDone": 2,
+        "stagesActive": 1,
+        "stageCount": 10,
+        "progress": 20,
+        "currentStage": "In progress: Data Gathering",
+        "target": "—",
+        "targetSort": null,
+        "provisional": false,
+        "owner": "",
+        "notes": "",
+        "flags": []
+      },
+      {
         "name": "Analytics Institute - EirGrid",
         "priority": "HIGH",
         "steps": [
@@ -1823,14 +2099,151 @@ window.FIDEO_DATA = {
         "targetSort": null,
         "provisional": false,
         "owner": "AQ",
-        "notes": "Stage 3 not started — waiting AI feedback. 15 modules x 15 mins. 4-6 week build when contract signed. Owner: AQ",
+        "notes": "Stage 3 Script — not started. Waiting on Yvonne @ AI to update. Back from holidays last week — gentle nudge going in tomorrow. 15 modules x 15 mins. 4-6 week build when contract signed. Owner: AQ",
         "flags": [
           "Waiting on others",
+          "Contract / sign-off",
+          "Needs chasing"
+        ]
+      },
+      {
+        "name": "AML RS",
+        "priority": "HIGH",
+        "steps": [
+          {
+            "name": "Data Gathering",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Overview & Timeframes",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Create Script",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "On-Demand Content",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Activities",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Academy Setup",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Timetables",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Tutor Recording",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "QA",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Go-Live",
+            "key": "none",
+            "label": ""
+          }
+        ],
+        "stagesDone": 0,
+        "stagesActive": 0,
+        "stageCount": 10,
+        "progress": 0,
+        "currentStage": "Not started",
+        "target": "Under review",
+        "targetSort": null,
+        "provisional": false,
+        "owner": "AQ",
+        "notes": "Stage 1 — AQ working with AML RS on proposal. Owner: AQ",
+        "flags": []
+      },
+      {
+        "name": "Charity Intelligence",
+        "priority": "HIGH",
+        "steps": [
+          {
+            "name": "Data Gathering",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Overview & Timeframes",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Create Script",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "On-Demand Content",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Activities",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Academy Setup",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Timetables",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Tutor Recording",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "QA",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Go-Live",
+            "key": "none",
+            "label": ""
+          }
+        ],
+        "stagesDone": 0,
+        "stagesActive": 0,
+        "stageCount": 10,
+        "progress": 0,
+        "currentStage": "Not started",
+        "target": "MOA TBC",
+        "targetSort": null,
+        "provisional": false,
+        "owner": "AQ",
+        "notes": "Stage 1 — Post MOA, target pilot for Academy. Owner: AQ",
+        "flags": [
           "Contract / sign-off"
         ]
       },
       {
-        "name": "Fincrime (previously AMLi Chapters)",
+        "name": "Analytics Institute - Shorts",
         "priority": "HIGH",
         "steps": [
           {
@@ -1855,18 +2268,88 @@ window.FIDEO_DATA = {
           },
           {
             "name": "Activities",
-            "key": "active",
-            "label": "WIP"
+            "key": "done",
+            "label": "Complete"
           },
           {
             "name": "Academy Setup",
-            "key": "active",
-            "label": "WIP"
+            "key": "done",
+            "label": "Complete"
           },
           {
             "name": "Timetables",
-            "key": "active",
-            "label": "WIP"
+            "key": "pending",
+            "label": "TBC"
+          },
+          {
+            "name": "Tutor Recording",
+            "key": "pending",
+            "label": "TBC"
+          },
+          {
+            "name": "QA",
+            "key": "pending",
+            "label": "TBC"
+          },
+          {
+            "name": "Go-Live",
+            "key": "pending",
+            "label": "TBC"
+          }
+        ],
+        "stagesDone": 6,
+        "stagesActive": 0,
+        "stageCount": 10,
+        "progress": 60,
+        "currentStage": "Next up: Timetables",
+        "target": "#1 Released",
+        "targetSort": null,
+        "provisional": false,
+        "owner": "AQ",
+        "notes": "Stage 6 — #1 released. Waiting to contract to proceed with additional modules. Owner: AQ",
+        "flags": [
+          "Waiting on others",
+          "Contract / sign-off"
+        ]
+      },
+      {
+        "name": "Acuru - Davy's Project",
+        "priority": "HIGH",
+        "steps": [
+          {
+            "name": "Data Gathering",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Overview & Timeframes",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Create Script",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "On-Demand Content",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Activities",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Academy Setup",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Timetables",
+            "key": "none",
+            "label": ""
           },
           {
             "name": "Tutor Recording",
@@ -1884,17 +2367,86 @@ window.FIDEO_DATA = {
             "label": ""
           }
         ],
-        "stagesDone": 4,
-        "stagesActive": 3,
+        "stagesDone": 0,
+        "stagesActive": 0,
         "stageCount": 10,
-        "progress": 40,
-        "currentStage": "In progress: Activities",
-        "target": "End Aug 2026",
-        "targetSort": 202608,
+        "progress": 0,
+        "currentStage": "Not started",
+        "target": "TBC",
+        "targetSort": null,
         "provisional": false,
-        "owner": "AQ/OM/Ben",
-        "notes": "Ben updating — editing, downloading, reuploading and chaptering in progress. Major editing done. Pre-records TBC and marketing required. Launching end August. Owner: AQ/OM/Ben",
+        "owner": "AQ",
+        "notes": "Stage 1 Data Gathering — AQ working with Acuru on proposal. Owner: AQ",
         "flags": []
+      },
+      {
+        "name": "AML Intelligence",
+        "priority": "HIGH",
+        "steps": [
+          {
+            "name": "Data Gathering",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Overview & Timeframes",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Create Script",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "On-Demand Content",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Activities",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Academy Setup",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Timetables",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Tutor Recording",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "QA",
+            "key": "none",
+            "label": ""
+          },
+          {
+            "name": "Go-Live",
+            "key": "none",
+            "label": ""
+          }
+        ],
+        "stagesDone": 0,
+        "stagesActive": 0,
+        "stageCount": 10,
+        "progress": 0,
+        "currentStage": "Not started",
+        "target": "ON HOLD",
+        "targetSort": null,
+        "provisional": false,
+        "owner": "",
+        "notes": "ON HOLD — all activity frozen by client until further notice.",
+        "flags": [
+          "Stalled"
+        ]
       },
       {
         "name": "Malta - AML",
@@ -1966,73 +2518,6 @@ window.FIDEO_DATA = {
           "Contract / sign-off",
           "Needs chasing"
         ]
-      },
-      {
-        "name": "CU - AML",
-        "priority": "HIGH",
-        "steps": [
-          {
-            "name": "Data Gathering",
-            "key": "active",
-            "label": "Proposal Submitted"
-          },
-          {
-            "name": "Overview & Timeframes",
-            "key": "done",
-            "label": "Complete"
-          },
-          {
-            "name": "Create Script",
-            "key": "done",
-            "label": "Complete"
-          },
-          {
-            "name": "On-Demand Content",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Activities",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Academy Setup",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Timetables",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Tutor Recording",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "QA",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Go-Live",
-            "key": "none",
-            "label": ""
-          }
-        ],
-        "stagesDone": 2,
-        "stagesActive": 1,
-        "stageCount": 10,
-        "progress": 20,
-        "currentStage": "In progress: Data Gathering",
-        "target": "—",
-        "targetSort": null,
-        "provisional": false,
-        "owner": "",
-        "notes": "",
-        "flags": []
       },
       {
         "name": "Stablecoins / Crypto / MiCA",
@@ -2299,15 +2784,12 @@ window.FIDEO_DATA = {
         "stageCount": 10,
         "progress": 0,
         "currentStage": "Next up: Data Gathering",
-        "target": "End Jul 2026",
-        "targetSort": 202607,
-        "provisional": true,
+        "target": "TBC",
+        "targetSort": null,
+        "provisional": false,
         "owner": "AQ/OM",
-        "notes": "Stage 4 not started — waiting on sign off & contract. Proposal sent. Owner: AQ/OM",
-        "flags": [
-          "Waiting on others",
-          "Contract / sign-off"
-        ]
+        "notes": "Stage 4 On-Demand Content — not started. Last comms: \"need to run by CEO.\" Nudging again tomorrow. Owner: AQ/OM",
+        "flags": []
       },
       {
         "name": "Gambling Compliance",
@@ -2369,151 +2851,12 @@ window.FIDEO_DATA = {
         "stageCount": 10,
         "progress": 0,
         "currentStage": "In progress: Data Gathering",
-        "target": "End Jul 2026",
-        "targetSort": 202607,
-        "provisional": true,
+        "target": "TBC",
+        "targetSort": null,
+        "provisional": false,
         "owner": "AQ",
-        "notes": "Stage 1 started — waiting on sign off & contract. Owner: AQ",
-        "flags": [
-          "Waiting on others",
-          "Contract / sign-off"
-        ]
-      },
-      {
-        "name": "India On Demand Courses - #1 & #2",
-        "priority": "HIGH",
-        "steps": [
-          {
-            "name": "Data Gathering",
-            "key": "done",
-            "label": "Complete"
-          },
-          {
-            "name": "Overview & Timeframes",
-            "key": "done",
-            "label": "Complete"
-          },
-          {
-            "name": "Create Script",
-            "key": "done",
-            "label": "Complete"
-          },
-          {
-            "name": "On-Demand Content",
-            "key": "active",
-            "label": "WIP"
-          },
-          {
-            "name": "Activities",
-            "key": "active",
-            "label": "WIP"
-          },
-          {
-            "name": "Academy Setup",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Timetables",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Tutor Recording",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "QA",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Go-Live",
-            "key": "none",
-            "label": ""
-          }
-        ],
-        "stagesDone": 3,
-        "stagesActive": 2,
-        "stageCount": 10,
-        "progress": 30,
-        "currentStage": "In progress: On-Demand Content",
-        "target": "End Aug 2026",
-        "targetSort": 202608,
-        "provisional": false,
-        "owner": "AQ/OM",
-        "notes": "Stage 4/5 — AQ/OM started on production on #1 & #2. End August. Owner: AQ/OM",
+        "notes": "Stage 1 Data Gathering — too much else in flow to progress right now. Will revisit when capacity allows. Owner: AQ",
         "flags": []
-      },
-      {
-        "name": "India On Demand Courses - #3 & #4",
-        "priority": "HIGH",
-        "steps": [
-          {
-            "name": "Data Gathering",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Overview & Timeframes",
-            "key": "active",
-            "label": "Started"
-          },
-          {
-            "name": "Create Script",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "On-Demand Content",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Activities",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Academy Setup",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Timetables",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Tutor Recording",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "QA",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Go-Live",
-            "key": "none",
-            "label": ""
-          }
-        ],
-        "stagesDone": 0,
-        "stagesActive": 1,
-        "stageCount": 10,
-        "progress": 0,
-        "currentStage": "In progress: Overview & Timeframes",
-        "target": "End Sep 2026",
-        "targetSort": 202609,
-        "provisional": false,
-        "owner": "AQ/OM",
-        "notes": "Stage 2 not started — waiting approval. End September. Owner: AQ/OM",
-        "flags": [
-          "Waiting on others"
-        ]
       },
       {
         "name": "AMLi Specialised Pathways",
@@ -2648,213 +2991,10 @@ window.FIDEO_DATA = {
         "owner": "AQ",
         "notes": "Stage 3 — proposal sent. Owner: AQ",
         "flags": []
-      },
-      {
-        "name": "Analytics Institute - Shorts",
-        "priority": "UNSET",
-        "steps": [
-          {
-            "name": "Data Gathering",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Overview & Timeframes",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Create Script",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "On-Demand Content",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Activities",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Academy Setup",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Timetables",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Tutor Recording",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "QA",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Go-Live",
-            "key": "none",
-            "label": ""
-          }
-        ],
-        "stagesDone": 0,
-        "stagesActive": 0,
-        "stageCount": 10,
-        "progress": 0,
-        "currentStage": "Not started",
-        "target": "",
-        "targetSort": null,
-        "provisional": false,
-        "owner": "",
-        "notes": "",
-        "flags": []
-      },
-      {
-        "name": "AML RS",
-        "priority": "HIGH",
-        "steps": [
-          {
-            "name": "Data Gathering",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Overview & Timeframes",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Create Script",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "On-Demand Content",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Activities",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Academy Setup",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Timetables",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Tutor Recording",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "QA",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Go-Live",
-            "key": "none",
-            "label": ""
-          }
-        ],
-        "stagesDone": 0,
-        "stagesActive": 0,
-        "stageCount": 10,
-        "progress": 0,
-        "currentStage": "Not started",
-        "target": "Under review",
-        "targetSort": null,
-        "provisional": false,
-        "owner": "AQ",
-        "notes": "Stage 1 — AQ working with AML RS on proposal. Owner: AQ",
-        "flags": []
-      },
-      {
-        "name": "Charity Intelligence",
-        "priority": "HIGH",
-        "steps": [
-          {
-            "name": "Data Gathering",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Overview & Timeframes",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Create Script",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "On-Demand Content",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Activities",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Academy Setup",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Timetables",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Tutor Recording",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "QA",
-            "key": "none",
-            "label": ""
-          },
-          {
-            "name": "Go-Live",
-            "key": "none",
-            "label": ""
-          }
-        ],
-        "stagesDone": 0,
-        "stagesActive": 0,
-        "stageCount": 10,
-        "progress": 0,
-        "currentStage": "Not started",
-        "target": "MOA TBC",
-        "targetSort": null,
-        "provisional": false,
-        "owner": "AQ",
-        "notes": "Stage 1 — Post MOA, target pilot for Academy. Owner: AQ",
-        "flags": [
-          "Contract / sign-off"
-        ]
       }
     ],
     "footnotes": [
-      "* Provisional dates — subject to contract signing. ⚠ Stagger build start dates — 4 concurrent builds is not workable. Analytics Institute now named EirGrid."
+      "* Provisional dates — subject to contract signing. ⚠ Stagger build start dates — concurrent builds are not workable."
     ],
     "sheet": "Course Build Tracker"
   },
@@ -2899,19 +3039,6 @@ window.FIDEO_DATA = {
         "flags": []
       },
       {
-        "name": "CBI Tender",
-        "description": "Central Bank of Ireland tender opportunity for regulatory training.",
-        "status": "Not Started",
-        "lead": "",
-        "nextStep": "Qualify scope and level of interest",
-        "target": "TBD",
-        "targetSort": null,
-        "notes": "Contact: Eoin Fitzgerald. Revenue unquantified.",
-        "flags": [
-          "Revenue unquantified"
-        ]
-      },
-      {
         "name": "Connector",
         "description": "",
         "status": "Not Started",
@@ -2934,9 +3061,20 @@ window.FIDEO_DATA = {
         "flags": [
           "Contract / sign-off"
         ]
+      },
+      {
+        "name": "Projects move to the Course Build Tracker once approved to build.",
+        "description": "",
+        "status": "Not Started",
+        "lead": "",
+        "nextStep": "",
+        "target": "",
+        "targetSort": null,
+        "notes": "",
+        "flags": []
       }
     ],
-    "sheet": "Projects"
+    "sheet": "Project Register"
   },
   "updates": [
     {
