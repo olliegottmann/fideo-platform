@@ -1296,6 +1296,26 @@
       .sort(function (a, b) { return b.overdue - a.overdue || b.active - a.active || b.open - a.open; });
   }
 
+  function slipLogCard() {
+    var all = slips().slice().sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+    if (!all.length) {
+      return '<section class="card"><div class="card-head"><h2>Dates that have moved</h2>' +
+        '<span class="hint">recorded from the next upload onwards</span></div>' +
+        '<p class="empty">No go-live date has moved yet. When one does, the upload asks why before applying it.</p></section>';
+    }
+    var unexplained = all.filter(function (x) { return !x.reason; }).length;
+    return '<section class="card"><div class="card-head"><h2>Dates that have moved</h2>' +
+      '<span class="hint">' + all.length + ' changes · ' + unexplained + ' with no reason given</span></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Recorded</th><th>Course</th><th>From</th><th>To</th>' +
+      '<th>Reason given</th><th>Agreed with</th></tr></thead><tbody>' +
+      all.slice(0, 15).map(function (x) {
+        return '<tr><td>' + esc(dateLabel(x.date)) + '</td><td class="client-cell">' + esc(x.course) + '</td>' +
+          '<td>' + esc(x.from) + '</td><td>' + esc(x.to) + '</td>' +
+          '<td class="note">' + (x.reason ? esc(x.reason) : chip('risk', 'No reason given', '!')) + '</td>' +
+          '<td>' + esc(x.agreedBy || '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div></section>';
+  }
+
   views.courses = function () {
     var f = state.filters.courses = state.filters.courses || { q: '', priority: '', person: '' };
     var m = buildModel();
@@ -1421,6 +1441,7 @@
       ruleNote('<b>Build order:</b> ' + esc(PRIORITY_RULE_BUILD)) +
       '<div class="grid two">' + highCard + overdueCard + '</div>' +
       '<div style="height:16px"></div>' + peopleCard +
+      '<div style="height:16px"></div>' + slipLogCard() +
       '<div style="height:16px"></div>' + filters + gridCard +
       '<div style="height:16px"></div>' + staffingCard() +
       '<div style="height:16px"></div>' + buildModelCard() +
@@ -1667,80 +1688,6 @@
     return out;
   }
 
-  /* Stage deadlines that have already gone by with the stage unfinished. */
-  function missedDeadlines() {
-    var m = buildModel(), today = new Date(), out = [];
-    courses().forEach(function (c) {
-      if (!c.name || !c.targetSort || c.progress === 100) return;
-      var plan = coursePlan(c);
-      c.steps.forEach(function (st, i) {
-        var due = plan.deadlines[i];
-        if (!due || st.key === 'done' || due >= today) return;
-        out.push({
-          course: c.name, stage: (i + 1) + '. ' + st.name, who: m.roles[i] || '',
-          owner: c.owner || '', due: due, daysLate: workingDaysBetween(due, today)
-        });
-      });
-    });
-    return out.sort(function (a, b) { return b.daysLate - a.daysLate; });
-  }
-
-  views.accountability = function () {
-    var all = slips().slice().sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
-    var unexplained = all.filter(function (s) { return !s.reason; });
-    var missed = missedDeadlines();
-
-    var byCourse = {};
-    all.forEach(function (s) { byCourse[s.course] = (byCourse[s.course] || 0) + 1; });
-    var repeat = Object.keys(byCourse).filter(function (k) { return byCourse[k] > 1; })
-      .sort(function (a, b) { return byCourse[b] - byCourse[a]; });
-
-    var kpis = '<div class="grid kpis">' +
-      kpi('Dates moved', String(all.length), 'recorded since tracking began', true) +
-      kpi('Moved without a reason', String(unexplained.length), 'nobody gave an explanation') +
-      kpi('Courses that moved more than once', String(repeat.length), repeat.length ? repeat.slice(0, 2).join(', ') : 'none yet') +
-      kpi('Stage deadlines already passed', String(missed.length), 'across ' + uniq(missed.map(function (x) { return x.course; })).length + ' courses') +
-      '</div>';
-
-    var log = all.length
-      ? '<div class="table-wrap"><table><thead><tr><th>Recorded</th><th>Course</th><th>Moved from</th>' +
-      '<th>Moved to</th><th>Owner</th><th>Reason given</th><th>Agreed with</th></tr></thead><tbody>' +
-      all.map(function (s) {
-        return '<tr><td>' + esc(dateLabel(s.date)) + '</td>' +
-          '<td class="client-cell">' + esc(s.course) + '</td>' +
-          '<td>' + esc(s.from) + '</td><td>' + esc(s.to) + '</td>' +
-          '<td><span data-tip="' + esc(expandInitials(s.owner)) + '">' + esc(s.owner || '—') + '</span></td>' +
-          '<td class="note">' + (s.reason ? esc(s.reason) : chip('risk', 'No reason given', '!')) + '</td>' +
-          '<td>' + esc(s.agreedBy || '—') + '</td></tr>';
-      }).join('') + '</tbody></table></div>'
-      : '<p class="empty">No date changes recorded yet. The log starts from the next tracker you upload — ' +
-      'each moved go-live date will ask why before it is applied.</p>';
-
-    var missedTable = missed.length
-      ? '<div class="table-wrap"><table><thead><tr><th>Course</th><th>Stage</th><th>Responsible</th>' +
-      '<th>Course owner</th><th>Should have finished</th><th>Working days late</th></tr></thead><tbody>' +
-      missed.slice(0, 25).map(function (x) {
-        return '<tr><td class="client-cell">' + esc(x.course) + '</td><td>' + esc(x.stage) + '</td>' +
-          '<td><span data-tip="' + esc(expandInitials(x.who)) + '">' + esc(x.who) + '</span></td>' +
-          '<td><span data-tip="' + esc(expandInitials(x.owner)) + '">' + esc(x.owner || '—') + '</span></td>' +
-          '<td>' + esc(fmtDate(x.due)) + '</td>' +
-          '<td class="num">' + chip('risk', String(x.daysLate), '!') + '</td></tr>';
-      }).join('') + '</tbody></table></div>'
-      : '<p class="empty">Nothing is past a stage deadline.</p>';
-
-    return kpis + '<div style="height:16px"></div>' +
-      '<section class="card"><div class="card-head"><h2>Every date that has moved</h2>' +
-      '<span class="hint">captured at import, with the reason</span></div>' + log +
-      '<p class="hint" style="margin-top:10px">A go-live date cannot move quietly: the next upload compares the ' +
-      'new tracker against what is published and asks for an explanation for each change before applying it. ' +
-      'Rows marked “no reason given” were applied without one.</p></section>' +
-      '<div style="height:16px"></div>' +
-      '<section class="card"><div class="card-head"><h2>Stages already past their deadline</h2>' +
-      '<span class="hint">worked back from each go-live target</span></div>' + missedTable +
-      '<p class="hint" style="margin-top:10px">These are not recorded events — they are what the standard build ' +
-      'says should already have happened, given each course’s own go-live target.</p></section>';
-  };
-
   /* ---------- importer ---------- */
   views['import'] = function () {
     var sources = (state.data.meta && state.data.meta.sources) || {};
@@ -1962,7 +1909,6 @@
     courses: ['Course builds', 'Where every programme is in the ten-stage build'],
     projects: ['Projects', 'Pre-pipeline opportunities and who owns them'],
     updates: ['Updates', 'What has changed lately'],
-    accountability: ['Accountability', 'Dates that have moved, why, and what is already late'],
     key: ['Key', 'What every symbol, initial and worked-out label on this platform means'],
     'import': ['Update data', 'Upload a tracker and publish the new numbers']
   };
