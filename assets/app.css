@@ -413,3 +413,31 @@ input.model-days:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
   body { background: #fff; }
   .card, .item, .table-wrap { box-shadow: none; break-inside: avoid; }
 }
+
+/* the course x stage grid */
+.grid-scroll { max-height: 70vh; overflow: auto; }
+table.stage-grid { font-size: 12px; }
+table.stage-grid th.course-col {
+  position: sticky; left: 0; z-index: 3; background: var(--ghost); text-align: left;
+  min-width: 190px; max-width: 190px; border-right: 2px solid var(--line);
+  text-transform: none; letter-spacing: 0; font-size: 12.5px; color: var(--ink); font-weight: 600;
+  padding: 8px 12px; white-space: normal;
+}
+table.stage-grid thead th.course-col { z-index: 5; }
+table.stage-grid th.course-col small { display: block; font-weight: 400; color: var(--ink-3); font-size: 11px; margin-top: 2px; }
+table.stage-grid thead th { position: sticky; top: 0; z-index: 2; vertical-align: bottom; }
+table.stage-grid th.stage-col {
+  min-width: 132px; white-space: normal; line-height: 1.25; text-transform: none;
+  letter-spacing: 0; font-size: 11.5px; padding: 8px 9px;
+}
+.stage-col-n {
+  display: inline-flex; width: 17px; height: 17px; border-radius: 50%; background: var(--p1);
+  color: var(--brand-dark); align-items: center; justify-content: center; font-size: 10px; margin-right: 5px;
+}
+table.stage-grid th.stage-col small { display: block; font-weight: 400; color: var(--ink-3); font-size: 10.5px; margin-top: 3px; }
+td.grid-cell { padding: 5px 7px; border-left: 1px solid var(--line-2); vertical-align: top; }
+td.grid-cell.done { background: var(--done-bg); }
+td.grid-cell.active { background: var(--active-bg); }
+td.grid-cell.overdue { background: #FDECEC; }
+td.grid-cell input.stage-due { max-width: 118px; font-size: 11px; padding: 3px 5px; margin-bottom: 3px; }
+td.grid-cell input.stage-who { max-width: 118px; font-size: 11px; padding: 3px 5px; }

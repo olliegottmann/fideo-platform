@@ -1252,92 +1252,178 @@
       '<div class="card" style="margin-top:16px">' + stepLegend() + '</div>';
   };
 
+  /* Resolve a stage's date and owner: an agreed value if someone has typed one,
+     otherwise the standard build's suggestion worked back from the go-live target. */
+  function stageCell(c, i, plan, saved, m) {
+    var own = saved[i] || {};
+    var due = own.due ? new Date(own.due) : (plan.deadlines[i] || null);
+    var who = own.who || m.roles[i] || '';
+    return {
+      due: due, who: who, agreed: !!(own.due || own.who),
+      status: c.steps[i].key,
+      overdue: due && due < new Date() && c.steps[i].key !== 'done'
+    };
+  }
+
+  function everyStageCell() {
+    var m = buildModel(), out = [];
+    courses().forEach(function (c) {
+      if (!c.name) return;
+      var plan = coursePlan(c), saved = stagePlanFor(c.name);
+      c.steps.forEach(function (st, i) {
+        out.push({ course: c, index: i, stage: st, cell: stageCell(c, i, plan, saved, m) });
+      });
+    });
+    return out;
+  }
+
+  function tasksByPerson() {
+    var byPerson = {};
+    everyStageCell().forEach(function (x) {
+      if (x.stage.key === 'done') return;
+      var names = String(x.cell.who || 'Unassigned').split(/[\/,]| and /)
+        .map(function (n) { return n.trim(); }).filter(Boolean);
+      if (!names.length) names = ['Unassigned'];
+      names.forEach(function (n) {
+        if (!byPerson[n]) byPerson[n] = { person: n, open: 0, active: 0, overdue: 0, items: [] };
+        byPerson[n].open++;
+        if (x.stage.key === 'active') byPerson[n].active++;
+        if (x.cell.overdue) byPerson[n].overdue++;
+        byPerson[n].items.push(x);
+      });
+    });
+    return Object.keys(byPerson).map(function (k) { return byPerson[k]; })
+      .sort(function (a, b) { return b.overdue - a.overdue || b.active - a.active || b.open - a.open; });
+  }
+
   views.courses = function () {
-    var f = state.filters.courses = state.filters.courses || { q: '', priority: '', status: '', groupBy: 'stage' };
+    var f = state.filters.courses = state.filters.courses || { q: '', priority: '', person: '' };
+    var m = buildModel();
+    var stages = (state.data.courses.stageNames || []);
     var all = courses().filter(function (c) { return c.name; });
+
     var list = all.filter(function (c) {
       if (f.priority && c.priority !== f.priority) return false;
-      if (f.status === 'build' && !(c.stagesActive > 0)) return false;
-      if (f.status === 'ready' && c.progress !== 100) return false;
-      if (f.status === 'notstarted' && c.stagesDone !== 0) return false;
-      if (f.status === 'late' && !isOverdue(c.targetSort)) return false;
       if (f.q && (c.name + ' ' + c.notes + ' ' + c.owner).toLowerCase().indexOf(f.q.toLowerCase()) === -1) return false;
+      if (f.person) {
+        var saved = stagePlanFor(c.name), plan = coursePlan(c);
+        var hit = c.steps.some(function (st, i) {
+          return String(stageCell(c, i, plan, saved, m).who).toUpperCase().indexOf(f.person.toUpperCase()) !== -1;
+        });
+        if (!hit) return false;
+      }
       return true;
     }).sort(function (a, b) {
       return priorityRank(a.priority) - priorityRank(b.priority) ||
-        (a.targetSort || 999999) - (b.targetSort || 999999) || b.progress - a.progress;
+        (a.targetSort || 999999) - (b.targetSort || 999999);
     });
 
-    var stages = (state.data.courses.stageNames || []);
-    var strip = '<div class="card" style="margin-bottom:16px"><div class="card-head"><h2>The ' + stages.length + '-stage build</h2>' +
-      '<span class="hint">every course runs through these in order</span></div>' +
-      '<div class="steps wide">' + stages.map(function (s, i) {
-        return '<span class="step pending" data-tip="Stage ' + (i + 1) + '">' + (i + 1) + '. ' + esc(s) + '</span>';
-      }).join('') + '</div>' + stepLegend() + '</div>';
+    var people = tasksByPerson();
 
+    /* 1. the ten stages across the top, same strip as the Overview */
+    var strip = buildStagesCard();
+
+    /* 2. high priority builds */
+    var highs = buildRanking(all.filter(function (c) { return c.priority === 'HIGH' && c.progress < 100; }), liveDeals());
+    var highCard = '<section class="card"><div class="card-head"><h2>High priority builds</h2>' +
+      '<span class="hint">' + highs.length + ' courses, in build-priority order</span></div>' +
+      (highs.length ? '<div class="list ranked">' + highs.slice(0, 10).map(function (r, i) {
+        var t = BUILD_TIERS[r.tier];
+        return '<div class="list-row"><span class="rank">' + (i + 1) + '</span><div class="lr-main">' +
+          '<div class="lr-title">' + esc(r.course.name) + '</div>' +
+          '<div class="lr-sub">' + esc(r.course.currentStage) + '</div></div>' +
+          '<div class="lr-side">' + chip(t.kind, t.label) + ' ' +
+          targetChip(r.course.target, r.course.targetSort, r.course.provisional) + '</div></div>';
+      }).join('') + '</div>' : '<p class="empty">Nothing marked High.</p>') + '</section>';
+
+    /* 3. anything overdue */
+    var overdue = everyStageCell().filter(function (x) { return x.cell.overdue; })
+      .sort(function (a, b) { return a.cell.due - b.cell.due; });
+    var overdueCard = '<section class="card"><div class="card-head"><h2>Overdue stages</h2>' +
+      '<span class="hint">' + overdue.length + ' past their date across ' +
+      uniq(overdue.map(function (x) { return x.course.name; })).length + ' courses</span></div>' +
+      (overdue.length
+        ? '<div class="table-wrap"><table><thead><tr><th>Course</th><th>Stage</th><th>Was due</th>' +
+        '<th>Days late</th><th>Responsible</th></tr></thead><tbody>' +
+        overdue.slice(0, 20).map(function (x) {
+          return '<tr class="row-late"><td class="client-cell">' + esc(x.course.name) + '</td>' +
+            '<td>' + (x.index + 1) + '. ' + esc(x.stage.name) + '</td>' +
+            '<td>' + esc(fmtDate(x.cell.due)) + '</td>' +
+            '<td class="num">' + chip('risk', String(workingDaysBetween(x.cell.due, new Date())), '!') + '</td>' +
+            '<td><span data-tip="' + esc(expandInitials(x.cell.who)) + '">' + esc(x.cell.who || '—') + '</span></td></tr>';
+        }).join('') + '</tbody></table></div>'
+        : '<p class="empty">Nothing is past its stage date.</p>') + '</section>';
+
+    /* 4. who is carrying what */
+    var peopleCard = '<section class="card"><div class="card-head"><h2>Who is on what</h2>' +
+      '<span class="hint">every stage still to do, by the person responsible</span></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Person</th><th>Role</th><th>Stages still to do</th>' +
+      '<th>In progress now</th><th>Overdue</th></tr></thead><tbody>' +
+      people.map(function (p) {
+        return '<tr><td class="client-cell">' + esc(p.person) + '</td>' +
+          '<td class="note">' + esc(roleName(p.person) || '—') + '</td>' +
+          '<td class="num">' + p.open + '</td>' +
+          '<td class="num">' + (p.active ? chip('active', String(p.active), '▶') : '0') + '</td>' +
+          '<td class="num">' + (p.overdue ? chip('risk', String(p.overdue), '!') : '0') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="hint" style="margin-top:10px">Counts every stage not yet complete, using the agreed owner where one ' +
+      'has been set and the standard build’s role where it has not — which is why only roles appear until someone types a name. '  + 'Type a person into any cell of the grid below (Ben, for instance) and they appear here. A stage owned by two people counts for both.</p>' +
+      '</section>';
+
+    /* 5. the grid: courses down the side, stages across the top */
     var filters = '<div class="filters">' +
       '<input type="search" id="fq" placeholder="Search course, owner or notes…" value="' + esc(f.q) + '" aria-label="Search courses">' +
       select('fpriority', 'All priorities', uniq(all.map(function (c) { return c.priority; })).map(function (p) { return { value: p, label: p }; }), f.priority) +
-      select('fstatus', 'All statuses', [
-        { value: 'build', label: 'Actively building' },
-        { value: 'ready', label: 'All stages complete' },
-        { value: 'notstarted', label: 'Not started' },
-        { value: 'late', label: 'Past target date' }
-      ], f.status) +
-      select('fgroup', 'Group by…', [
-        { value: 'stage', label: 'Group by build stage' },
-        { value: 'priority', label: 'Group by build priority' }
-      ], f.groupBy) +
+      select('fperson', 'Anyone responsible', people.map(function (p) {
+        return { value: p.person, label: p.person + (roleName(p.person) ? ' — ' + roleName(p.person) : '') };
+      }), f.person) +
       '<span class="result-count">' + list.length + ' of ' + all.length + ' courses</span></div>';
 
-    var tiers = {};
-    buildRanking(all, liveDeals()).forEach(function (r) { tiers[r.course.name] = r; });
+    var headCells = stages.map(function (name, i) {
+      return '<th class="stage-col"><span class="stage-col-n">' + (i + 1) + '</span>' + esc(name) +
+        '<small>' + esc(m.roles[i] || '') + ' · ' + (m.days[i] || 0) + 'd</small></th>';
+    }).join('');
 
-    var card = function (c) {
-      var attention = c.flags.length || (isOverdue(c.targetSort) && c.progress < 100);
-      var t = tiers[c.name];
-      var tierMeta = t ? BUILD_TIERS[t.tier] : null;
-      return '<article class="item' + (attention ? ' attention' : '') + '">' +
-        '<div class="item-head"><h3>' + esc(c.name) + '</h3><div class="chips">' + priorityChip(c.priority) + '</div></div>' +
-        (tierMeta ? '<div class="chips">' + chip(tierMeta.kind, tierMeta.glyph + '. ' + tierMeta.label) + '</div>' +
-          '<p class="note tier-why">' + esc(t.why) + '</p>' : '') +
-        '<div class="chips">' + targetChip(c.target, c.targetSort, c.provisional) +
-        chip('ghost', c.currentStage) + (c.owner ? '<span class="chip ghost" data-tip="' + esc(expandInitials(c.owner)) + '">Owner: ' + esc(c.owner) + '</span>' : '') + '</div>' +
-        stepStrip(c.steps) +
-        progressBar(c.progress, c.stagesDone + '/' + c.stageCount + ' stages complete') +
-        planDetails(c) +
-        (c.notes ? '<p class="note">' + esc(c.notes) + '</p>' : '') +
-        (c.flags.length ? '<div class="chips">' + flagChips(c.flags) + '</div>' : '') +
-        '</article>';
-    };
+    var gridRows = list.map(function (c) {
+      var plan = coursePlan(c), saved = stagePlanFor(c.name);
+      var cells = c.steps.map(function (st, i) {
+        var cell = stageCell(c, i, plan, saved, m);
+        return '<td class="grid-cell ' + st.key + (cell.overdue ? ' overdue' : '') + '"' +
+          ' data-tip="' + esc(c.name + ' — ' + (i + 1) + '. ' + st.name + ' — ' + (st.label || 'not started')) + '">' +
+          '<input type="date" class="stage-due" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
+          esc(cell.due ? isoDate(cell.due) : '') + '"' + (saved[i] && saved[i].due ? '' : ' data-suggested="1"') + '>' +
+          '<input type="text" class="stage-who" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
+          esc(cell.who) + '" placeholder="who"' + (saved[i] && saved[i].who ? '' : ' data-suggested="1"') + '>' +
+          '</td>';
+      }).join('');
+      return '<tr><th class="course-col">' + esc(c.name) +
+        '<small>' + esc(c.priority) + ' · ' + esc(c.target || 'no target') + (c.owner ? ' · ' + esc(c.owner) : '') + '</small></th>' + cells + '</tr>';
+    }).join('');
+
+    var gridCard = '<section class="card"><div class="card-head"><h2>Every course, every stage</h2>' +
+      '<span class="hint">date and person for each — grey is suggested, type to agree it</span></div>' +
+      (list.length
+        ? '<div class="table-wrap grid-scroll"><table class="stage-grid"><thead><tr><th class="course-col">Course</th>' +
+        headCells + '</tr></thead><tbody>' + gridRows + '</tbody></table></div>'
+        : '<p class="empty">No courses match those filters.</p>') +
+      '<div class="legend" style="margin-top:12px">' +
+      '<span><i style="background:var(--done-bg)"></i>Stage complete</span>' +
+      '<span><i style="background:var(--active-bg)"></i>In progress</span>' +
+      '<span><i style="background:#fff;border:1px solid var(--line)"></i>Not started</span>' +
+      '<span><i style="background:#FDECEC"></i>Past its date</span>' +
+      '</div></section>';
 
     var footnotes = (state.data.courses.footnotes || []).map(function (n) {
       return '<div class="banner info"><span aria-hidden="true">ℹ</span><div>' + esc(n) + '</div></div>';
     }).join('');
 
-    var body;
-    if (!list.length) {
-      body = '<p class="empty">No courses match those filters.</p>';
-    } else if (f.groupBy === 'stage') {
-      body = groupedSections(list, stages, card, 'stages');
-    } else {
-      /* grouped by the directors' build-priority rule */
-      var order = buildRanking(list, liveDeals());
-      body = [1, 2, 3, 4].map(function (tier) {
-        var items = order.filter(function (r) { return r.tier === tier; }).map(function (r) { return r.course; });
-        if (!items.length) return '';
-        var meta = BUILD_TIERS[tier];
-        return '<section class="stage-group"><div class="stage-group-head">' +
-          '<h2>' + meta.glyph + '. ' + esc(meta.label) + '</h2>' +
-          '<span class="chip ghost">' + items.length + '</span></div>' +
-          '<div class="grid cards">' + items.map(card).join('') + '</div></section>';
-      }).join('');
-    }
-
-    return strip + capacityCard() + '<div style="height:16px"></div>' +
-      staffingCard() + '<div style="height:16px"></div>' +
-      buildModelCard() + '<div style="height:16px"></div>' +
-      ruleNote('<b>Build order:</b> ' + esc(PRIORITY_RULE_BUILD)) + filters + body +
+    return strip + '<div style="height:16px"></div>' +
+      ruleNote('<b>Build order:</b> ' + esc(PRIORITY_RULE_BUILD)) +
+      '<div class="grid two">' + highCard + overdueCard + '</div>' +
+      '<div style="height:16px"></div>' + peopleCard +
+      '<div style="height:16px"></div>' + filters + gridCard +
+      '<div style="height:16px"></div>' + staffingCard() +
+      '<div style="height:16px"></div>' + buildModelCard() +
       (footnotes ? '<div style="margin-top:16px">' + footnotes + '</div>' : '');
   };
 
@@ -1927,7 +2013,7 @@
         if (again) { again.focus(); again.setSelectionRange(pos, pos); }
       }, 180));
     }
-    [['fstage', 'stage'], ['fpriority', 'priority'], ['fvertical', 'vertical'], ['fstatus', 'status'], ['fgroup', 'groupBy']].forEach(function (pair) {
+    [['fstage', 'stage'], ['fpriority', 'priority'], ['fvertical', 'vertical'], ['fstatus', 'status'], ['fgroup', 'groupBy'], ['fperson', 'person']].forEach(function (pair) {
       var el = $('#' + pair[0], main);
       if (!el) return;
       el.addEventListener('change', function () {
