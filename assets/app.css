@@ -441,3 +441,15 @@ td.grid-cell.active { background: var(--active-bg); }
 td.grid-cell.overdue { background: #FDECEC; }
 td.grid-cell input.stage-due { max-width: 118px; font-size: 11px; padding: 3px 5px; margin-bottom: 3px; }
 td.grid-cell input.stage-who { max-width: 118px; font-size: 11px; padding: 3px 5px; }
+
+/* customer status cards */
+.item.customer { gap: 0; }
+.cust-block { border-top: 1px solid var(--line-2); padding: 11px 0 0; margin-top: 11px; }
+.item.customer .item-head + .cust-block { border-top: 0; margin-top: 4px; padding-top: 0; }
+.cust-block h4 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--ink-3); margin-bottom: 7px; font-weight: 600;
+}
+.cust-block .item-meta { margin-bottom: 6px; }
+.cust-block .list-row { padding: 8px 0; }
+.grid.cards:has(.item.customer) { grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); }

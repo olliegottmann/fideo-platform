@@ -1218,274 +1218,146 @@
       }).join('') + '</select>';
   }
 
-  views.deals = function () {
-    var f = state.filters.deals = state.filters.deals || { q: '', priority: '' };
-    var all = plans().filter(function (p) { return p.client; });
-    var list = all.filter(function (p) {
-      if (f.priority && String(p.priority).toLowerCase() !== f.priority.toLowerCase()) return false;
-      if (f.q && (p.client + ' ' + p.vertical + ' ' + p.notes).toLowerCase().indexOf(f.q.toLowerCase()) === -1) return false;
-      return true;
-    }).sort(function (a, b) { return b.progress - a.progress || a.client.localeCompare(b.client); });
+  /* ---------- customer status ----------
+     One entry per client, pulling together their pipeline deal, their five-milestone
+     plan and any course builds matched to them, grouped by how close to live they are. */
+  var CUSTOMER_BANDS = [
+    { key: 'live', label: 'Live — delivering now', kind: 'done', glyph: '✓', blurb: 'Programme is running with learners.' },
+    { key: 'contracted', label: 'Contracted — starting', kind: 'done', glyph: '✓', blurb: 'Signed. Build and mobilisation underway.' },
+    { key: 'nearly', label: 'Nearly live — in contracting', kind: 'active', glyph: '▶', blurb: 'Terms being agreed. Nothing signed yet.' },
+    { key: 'proposal', label: 'Proposal with the client', kind: 'brand', glyph: '', blurb: 'We have put numbers in front of them.' },
+    { key: 'scoping', label: 'Scoping', kind: 'wait', glyph: '', blurb: 'Working out what they need.' },
+    { key: 'lead', label: 'Early conversations', kind: 'wait', glyph: '', blurb: 'Interest, nothing shaped yet.' },
+    { key: 'noDeal', label: 'On the plan, not on the pipeline', kind: 'wait', glyph: '', blurb: 'A milestone plan exists but no deal row.' },
+    { key: 'parked', label: 'Parked or dead', kind: 'wait', glyph: '○', blurb: 'Frozen by the client, or written off.' }
+  ];
 
-    var filters = '<div class="filters">' +
-      '<input type="search" id="fq" placeholder="Search client or notes…" value="' + esc(f.q) + '" aria-label="Search deal plans">' +
-      select('fpriority', 'All priorities', uniq(all.map(function (p) { return p.priority; })).map(function (p) { return { value: p, label: p }; }), f.priority) +
-      '<span class="result-count">' + list.length + ' of ' + all.length + ' deal plans</span></div>';
-
-    var card = function (p) {
-      var stalled = p.steps.every(function (s) { return s.key !== 'active'; }) && p.progress < 100;
-      return '<article class="item' + (p.flags.length ? ' attention' : '') + '">' +
-        '<div class="item-head"><h3>' + esc(p.client) + '</h3><div class="chips">' + priorityChip(p.priority) + '</div></div>' +
-        '<div class="item-meta">' + (p.vertical ? '<span><b>' + esc(p.vertical) + '</b></span>' : '') +
-        (p.target ? '<span>Target: ' + esc(p.target) + '</span>' : '') + '</div>' +
-        stepStrip(p.steps, true) +
-        progressBar(p.progress, p.stepsDone + '/' + p.stepCount + ' milestones') +
-        (p.notes ? '<p class="note">' + esc(p.notes) + '</p>' : '') +
-        (p.flags.length || stalled ? '<div class="chips">' + flagChips(p.flags) + (stalled && p.stepsDone < p.stepCount ? chip('wait', 'No milestone in progress') : '') + '</div>' : '') +
-        '</article>';
-    };
-
-    var stageNames = (state.data.dealPlans && state.data.dealPlans.stageNames) || [];
-    return filters + (list.length
-      ? groupedSections(list, stageNames, card, 'milestones')
-      : '<p class="empty">No deal plans match those filters.</p>') +
-      '<div class="card" style="margin-top:16px">' + stepLegend() + '</div>';
-  };
-
-  /* Resolve a stage's date and owner: an agreed value if someone has typed one,
-     otherwise the standard build's suggestion worked back from the go-live target. */
-  function stageCell(c, i, plan, saved, m) {
-    var own = saved[i] || {};
-    var due = own.due ? new Date(own.due) : (plan.deadlines[i] || null);
-    var who = own.who || m.roles[i] || '';
-    return {
-      due: due, who: who, agreed: !!(own.due || own.who),
-      status: c.steps[i].key,
-      overdue: due && due < new Date() && c.steps[i].key !== 'done'
-    };
+  function customerBand(key) {
+    return CUSTOMER_BANDS.filter(function (b) { return b.key === key; })[0] || CUSTOMER_BANDS[CUSTOMER_BANDS.length - 1];
   }
 
-  function everyStageCell() {
-    var m = buildModel(), out = [];
+  function customerList() {
+    var map = {}, dealList = deals();
+    dealList.forEach(function (d) {
+      if (!d.client) return;
+      map[d.client] = { name: d.client, deal: d, plan: null, courses: [] };
+    });
+    plans().forEach(function (p) {
+      if (!p.client) return;
+      if (!map[p.client]) map[p.client] = { name: p.client, deal: null, plan: p, courses: [] };
+      else map[p.client].plan = p;
+    });
     courses().forEach(function (c) {
       if (!c.name) return;
-      var plan = coursePlan(c), saved = stagePlanFor(c.name);
-      c.steps.forEach(function (st, i) {
-        out.push({ course: c, index: i, stage: st, cell: stageCell(c, i, plan, saved, m) });
-      });
+      var d = dealForCourse(c, dealList);
+      if (d && map[d.client]) map[d.client].courses.push(c);
     });
-    return out;
-  }
 
-  function tasksByPerson() {
-    var byPerson = {};
-    everyStageCell().forEach(function (x) {
-      if (x.stage.key === 'done') return;
-      var names = String(x.cell.who || 'Unassigned').split(/[\/,]| and /)
-        .map(function (n) { return n.trim(); }).filter(Boolean);
-      if (!names.length) names = ['Unassigned'];
-      names.forEach(function (n) {
-        if (!byPerson[n]) byPerson[n] = { person: n, open: 0, active: 0, overdue: 0, items: [] };
-        byPerson[n].open++;
-        if (x.stage.key === 'active') byPerson[n].active++;
-        if (x.cell.overdue) byPerson[n].overdue++;
-        byPerson[n].items.push(x);
-      });
+    return Object.keys(map).map(function (k) {
+      var cu = map[k];
+      var stage = cu.deal ? cu.deal.stageNum : null;
+      var dead = cu.deal && ['dead'].indexOf(String(cu.deal.priority).toLowerCase()) !== -1;
+      var frozen = /frozen|on hold|inactive/i.test((cu.deal && cu.deal.notes) || '');
+      if (dead || frozen) cu.band = 'parked';
+      else if (stage === 6) cu.band = 'live';
+      else if (stage === 5) cu.band = 'contracted';
+      else if (stage === 4) cu.band = 'nearly';
+      else if (stage === 3) cu.band = 'proposal';
+      else if (stage === 2) cu.band = 'scoping';
+      else if (stage === 1) cu.band = 'lead';
+      else cu.band = 'noDeal';
+      return cu;
     });
-    return Object.keys(byPerson).map(function (k) { return byPerson[k]; })
-      .sort(function (a, b) { return b.overdue - a.overdue || b.active - a.active || b.open - a.open; });
   }
 
-  function slipLogCard() {
-    var all = slips().slice().sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
-    if (!all.length) {
-      return '<section class="card"><div class="card-head"><h2>Dates that have moved</h2>' +
-        '<span class="hint">recorded from the next upload onwards</span></div>' +
-        '<p class="empty">No go-live date has moved yet. When one does, the upload asks why before applying it.</p></section>';
-    }
-    var unexplained = all.filter(function (x) { return !x.reason; }).length;
-    return '<section class="card"><div class="card-head"><h2>Dates that have moved</h2>' +
-      '<span class="hint">' + all.length + ' changes · ' + unexplained + ' with no reason given</span></div>' +
-      '<div class="table-wrap"><table><thead><tr><th>Recorded</th><th>Course</th><th>From</th><th>To</th>' +
-      '<th>Reason given</th><th>Agreed with</th></tr></thead><tbody>' +
-      all.slice(0, 15).map(function (x) {
-        return '<tr><td>' + esc(dateLabel(x.date)) + '</td><td class="client-cell">' + esc(x.course) + '</td>' +
-          '<td>' + esc(x.from) + '</td><td>' + esc(x.to) + '</td>' +
-          '<td class="note">' + (x.reason ? esc(x.reason) : chip('risk', 'No reason given', '!')) + '</td>' +
-          '<td>' + esc(x.agreedBy || '—') + '</td></tr>';
-      }).join('') + '</tbody></table></div></section>';
-  }
+  views.customers = function () {
+    var f = state.filters.customers = state.filters.customers || { q: '', band: '' };
+    var all = customerList();
 
-  views.courses = function () {
-    var f = state.filters.courses = state.filters.courses || { q: '', priority: '', person: '' };
-    var m = buildModel();
-    var stages = (state.data.courses.stageNames || []);
-    var all = courses().filter(function (c) { return c.name; });
+    var counts = {};
+    all.forEach(function (cu) { counts[cu.band] = (counts[cu.band] || 0) + 1; });
 
-    var list = all.filter(function (c) {
-      if (f.priority && c.priority !== f.priority) return false;
-      if (f.q && (c.name + ' ' + c.notes + ' ' + c.owner).toLowerCase().indexOf(f.q.toLowerCase()) === -1) return false;
-      if (f.person) {
-        var saved = stagePlanFor(c.name), plan = coursePlan(c);
-        var hit = c.steps.some(function (st, i) {
-          return String(stageCell(c, i, plan, saved, m).who).toUpperCase().indexOf(f.person.toUpperCase()) !== -1;
-        });
-        if (!hit) return false;
+    var list = all.filter(function (cu) {
+      if (f.band && cu.band !== f.band) return false;
+      if (f.q) {
+        var hay = (cu.name + ' ' + (cu.deal ? cu.deal.vertical + ' ' + cu.deal.notes : '') + ' ' +
+          cu.courses.map(function (c) { return c.name; }).join(' ')).toLowerCase();
+        if (hay.indexOf(f.q.toLowerCase()) === -1) return false;
       }
       return true;
-    }).sort(function (a, b) {
-      return priorityRank(a.priority) - priorityRank(b.priority) ||
-        (a.targetSort || 999999) - (b.targetSort || 999999);
     });
 
-    var people = tasksByPerson();
-
-    /* 1. the ten stages across the top, same strip as the Overview */
-    var strip = buildStagesCard();
-
-    /* 2. high priority builds */
-    var highs = buildRanking(all.filter(function (c) { return c.priority === 'HIGH' && c.progress < 100; }), liveDeals());
-    var highCard = '<section class="card"><div class="card-head"><h2>High priority builds</h2>' +
-      '<span class="hint">' + highs.length + ' courses, in build-priority order</span></div>' +
-      (highs.length ? '<div class="list ranked">' + highs.slice(0, 10).map(function (r, i) {
-        var t = BUILD_TIERS[r.tier];
-        return '<div class="list-row"><span class="rank">' + (i + 1) + '</span><div class="lr-main">' +
-          '<div class="lr-title">' + esc(r.course.name) + '</div>' +
-          '<div class="lr-sub">' + esc(r.course.currentStage) + '</div></div>' +
-          '<div class="lr-side">' + chip(t.kind, t.label) + ' ' +
-          targetChip(r.course.target, r.course.targetSort, r.course.provisional) + '</div></div>';
-      }).join('') + '</div>' : '<p class="empty">Nothing marked High.</p>') + '</section>';
-
-    /* 3. anything overdue */
-    var overdue = everyStageCell().filter(function (x) { return x.cell.overdue; })
-      .sort(function (a, b) { return a.cell.due - b.cell.due; });
-    var overdueCard = '<section class="card"><div class="card-head"><h2>Overdue stages</h2>' +
-      '<span class="hint">' + overdue.length + ' past their date across ' +
-      uniq(overdue.map(function (x) { return x.course.name; })).length + ' courses</span></div>' +
-      (overdue.length
-        ? '<div class="table-wrap"><table><thead><tr><th>Course</th><th>Stage</th><th>Was due</th>' +
-        '<th>Days late</th><th>Responsible</th></tr></thead><tbody>' +
-        overdue.slice(0, 20).map(function (x) {
-          return '<tr class="row-late"><td class="client-cell">' + esc(x.course.name) + '</td>' +
-            '<td>' + (x.index + 1) + '. ' + esc(x.stage.name) + '</td>' +
-            '<td>' + esc(fmtDate(x.cell.due)) + '</td>' +
-            '<td class="num">' + chip('risk', String(workingDaysBetween(x.cell.due, new Date())), '!') + '</td>' +
-            '<td><span data-tip="' + esc(expandInitials(x.cell.who)) + '">' + esc(x.cell.who || '—') + '</span></td></tr>';
-        }).join('') + '</tbody></table></div>'
-        : '<p class="empty">Nothing is past its stage date.</p>') + '</section>';
-
-    /* 4. who is carrying what */
-    var peopleCard = '<section class="card"><div class="card-head"><h2>Who is on what</h2>' +
-      '<span class="hint">every stage still to do, by the person responsible</span></div>' +
-      '<div class="table-wrap"><table><thead><tr><th>Person</th><th>Role</th><th>Stages still to do</th>' +
-      '<th>In progress now</th><th>Overdue</th></tr></thead><tbody>' +
-      people.map(function (p) {
-        return '<tr><td class="client-cell">' + esc(p.person) + '</td>' +
-          '<td class="note">' + esc(roleName(p.person) || '—') + '</td>' +
-          '<td class="num">' + p.open + '</td>' +
-          '<td class="num">' + (p.active ? chip('active', String(p.active), '▶') : '0') + '</td>' +
-          '<td class="num">' + (p.overdue ? chip('risk', String(p.overdue), '!') : '0') + '</td></tr>';
-      }).join('') + '</tbody></table></div>' +
-      '<p class="hint" style="margin-top:10px">Counts every stage not yet complete, using the agreed owner where one ' +
-      'has been set and the standard build’s role where it has not — which is why only roles appear until someone types a name. '  + 'Type a person into any cell of the grid below (Ben, for instance) and they appear here. A stage owned by two people counts for both.</p>' +
-      '</section>';
-
-    /* 5. the grid: courses down the side, stages across the top */
-    var filters = '<div class="filters">' +
-      '<input type="search" id="fq" placeholder="Search course, owner or notes…" value="' + esc(f.q) + '" aria-label="Search courses">' +
-      select('fpriority', 'All priorities', uniq(all.map(function (c) { return c.priority; })).map(function (p) { return { value: p, label: p }; }), f.priority) +
-      select('fperson', 'Anyone responsible', people.map(function (p) {
-        return { value: p.person, label: p.person + (roleName(p.person) ? ' — ' + roleName(p.person) : '') };
-      }), f.person) +
-      '<span class="result-count">' + list.length + ' of ' + all.length + ' courses</span></div>';
-
-    var headCells = stages.map(function (name, i) {
-      return '<th class="stage-col"><span class="stage-col-n">' + (i + 1) + '</span>' + esc(name) +
-        '<small>' + esc(m.roles[i] || '') + ' · ' + (m.days[i] || 0) + 'd</small></th>';
-    }).join('');
-
-    var gridRows = list.map(function (c) {
-      var plan = coursePlan(c), saved = stagePlanFor(c.name);
-      var cells = c.steps.map(function (st, i) {
-        var cell = stageCell(c, i, plan, saved, m);
-        return '<td class="grid-cell ' + st.key + (cell.overdue ? ' overdue' : '') + '"' +
-          ' data-tip="' + esc(c.name + ' — ' + (i + 1) + '. ' + st.name + ' — ' + (st.label || 'not started')) + '">' +
-          '<input type="date" class="stage-due" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
-          esc(cell.due ? isoDate(cell.due) : '') + '"' + (saved[i] && saved[i].due ? '' : ' data-suggested="1"') + '>' +
-          '<input type="text" class="stage-who" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
-          esc(cell.who) + '" placeholder="who"' + (saved[i] && saved[i].who ? '' : ' data-suggested="1"') + '>' +
-          '</td>';
-      }).join('');
-      return '<tr><th class="course-col">' + esc(c.name) +
-        '<small>' + esc(c.priority) + ' · ' + esc(c.target || 'no target') + (c.owner ? ' · ' + esc(c.owner) : '') + '</small></th>' + cells + '</tr>';
-    }).join('');
-
-    var gridCard = '<section class="card"><div class="card-head"><h2>Every course, every stage</h2>' +
-      '<span class="hint">date and person for each — grey is suggested, type to agree it</span></div>' +
-      (list.length
-        ? '<div class="table-wrap grid-scroll"><table class="stage-grid"><thead><tr><th class="course-col">Course</th>' +
-        headCells + '</tr></thead><tbody>' + gridRows + '</tbody></table></div>'
-        : '<p class="empty">No courses match those filters.</p>') +
-      '<div class="legend" style="margin-top:12px">' +
-      '<span><i style="background:var(--done-bg)"></i>Stage complete</span>' +
-      '<span><i style="background:var(--active-bg)"></i>In progress</span>' +
-      '<span><i style="background:#fff;border:1px solid var(--line)"></i>Not started</span>' +
-      '<span><i style="background:#FDECEC"></i>Past its date</span>' +
-      '</div></section>';
-
-    var footnotes = (state.data.courses.footnotes || []).map(function (n) {
-      return '<div class="banner info"><span aria-hidden="true">ℹ</span><div>' + esc(n) + '</div></div>';
-    }).join('');
-
-    return strip + '<div style="height:16px"></div>' +
-      ruleNote('<b>Build order:</b> ' + esc(PRIORITY_RULE_BUILD)) +
-      '<div class="grid two">' + highCard + overdueCard + '</div>' +
-      '<div style="height:16px"></div>' + peopleCard +
-      '<div style="height:16px"></div>' + slipLogCard() +
-      '<div style="height:16px"></div>' + filters + gridCard +
-      '<div style="height:16px"></div>' + staffingCard() +
-      '<div style="height:16px"></div>' + buildModelCard() +
-      (footnotes ? '<div style="margin-top:16px">' + footnotes + '</div>' : '');
-  };
-
-  views.projects = function () {
-    var all = projects().filter(function (p) { return p.name; });
-    var f = state.filters.projects = state.filters.projects || { q: '', status: '' };
-    var list = all.filter(function (p) {
-      if (f.status && p.status !== f.status) return false;
-      if (f.q && (p.name + ' ' + p.description + ' ' + p.notes + ' ' + p.nextStep).toLowerCase().indexOf(f.q.toLowerCase()) === -1) return false;
-      return true;
-    }).sort(function (a, b) {
-      var w = function (p) { return /progress/i.test(p.status) ? 0 : 1; };
-      return w(a) - w(b) || (a.targetSort || 999999) - (b.targetSort || 999999);
-    });
+    /* the headline: who is live, and who is nearly there */
+    var liveish = ['live', 'contracted', 'nearly'];
+    var summary = '<div class="grid kpis">' +
+      CUSTOMER_BANDS.filter(function (b) { return liveish.indexOf(b.key) !== -1; }).map(function (b) {
+        var names = all.filter(function (cu) { return cu.band === b.key; }).map(function (cu) { return cu.name; });
+        return kpi(b.label, String(names.length), names.length ? names.join(', ') : 'nobody yet', b.key === 'live');
+      }).join('') +
+      kpi('Everyone else', String(all.length - all.filter(function (cu) { return liveish.indexOf(cu.band) !== -1; }).length),
+        'in discussion, parked or not yet on the pipeline') +
+      '</div>';
 
     var filters = '<div class="filters">' +
-      '<input type="search" id="fq" placeholder="Search projects…" value="' + esc(f.q) + '" aria-label="Search projects">' +
-      select('fstatus', 'All statuses', uniq(all.map(function (p) { return p.status; })).map(function (s) { return { value: s, label: s }; }), f.status) +
-      '<span class="result-count">' + list.length + ' of ' + all.length + ' projects</span></div>';
+      '<input type="search" id="fq" placeholder="Search client, vertical, notes or course…" value="' + esc(f.q) + '" aria-label="Search customers">' +
+      select('fband', 'All customers', CUSTOMER_BANDS.filter(function (b) { return counts[b.key]; })
+        .map(function (b) { return { value: b.key, label: b.label + ' (' + counts[b.key] + ')' }; }), f.band) +
+      '<span class="result-count">' + list.length + ' of ' + all.length + ' clients</span></div>';
 
-    var cards = list.map(function (p) {
-      var gaps = [];
-      if (!p.lead) gaps.push('No lead');
-      if (!p.nextStep) gaps.push('No next step');
-      if (!p.target) gaps.push('No target date');
-      var statusKind = /progress/i.test(p.status) ? 'active' : (/complete|live/i.test(p.status) ? 'done' : 'wait');
-      var statusGlyph = statusKind === 'active' ? '▶' : (statusKind === 'done' ? '✓' : '○');
-      return '<article class="item' + (gaps.length ? ' attention' : '') + '">' +
-        '<div class="item-head"><h3>' + esc(p.name) + '</h3>' + chip(statusKind, p.status, statusGlyph) + '</div>' +
-        (p.description ? '<p class="note">' + esc(p.description) + '</p>' : '') +
+    function customerCard(cu) {
+      var d = cu.deal;
+      var band = customerBand(cu.band);
+
+      var dealBlock = d
+        ? '<div class="cust-block"><h4>The deal</h4>' +
         '<div class="item-meta">' +
-        '<span>Lead: <b>' + esc(p.lead || 'unassigned') + '</b></span>' +
-        (p.target ? '<span>Target: <b>' + esc(p.target) + '</b></span>' : '') +
+        '<span>Stage: <b>' + esc(d.stageLabel || d.stage || '—') + '</b></span>' +
+        '<span>Priority: <b>' + esc(d.priority) + '</b></span>' +
+        '<span>Vertical: <b>' + esc(d.vertical) + '</b></span>' +
+        '<span>Target go-live: <b>' + esc(d.target || 'not set') + '</b></span>' +
         '</div>' +
-        (p.nextStep ? '<p class="note"><b>Next step:</b> ' + esc(p.nextStep) + '</p>' : '') +
-        (p.notes ? '<p class="note">' + esc(p.notes) + '</p>' : '') +
-        (gaps.length || p.flags.length ? '<div class="chips">' + gaps.map(function (g) { return chip('wait', g); }).join('') + flagChips(p.flags) + '</div>' : '') +
+        (d.notes ? '<p class="note"><b>Next action:</b> ' + esc(d.notes) + '</p>' : '') +
+        (d.flags.length ? '<div class="chips">' + flagChips(d.flags) + '</div>' : '') +
+        '</div>'
+        : '<div class="cust-block"><h4>The deal</h4><p class="note">No row on the sales pipeline for this client.</p></div>';
+
+      var planBlock = cu.plan
+        ? '<div class="cust-block"><h4>Milestones</h4>' + stepStrip(cu.plan.steps, true) +
+        progressBar(cu.plan.progress, cu.plan.stepsDone + '/' + cu.plan.stepCount + ' complete') +
+        (cu.plan.notes ? '<p class="note">' + esc(cu.plan.notes) + '</p>' : '') + '</div>'
+        : '';
+
+      var courseBlock = cu.courses.length
+        ? '<div class="cust-block"><h4>' + cu.courses.length + (cu.courses.length === 1 ? ' course being built' : ' courses being built') + '</h4>' +
+        '<div class="list">' + cu.courses.map(function (c) {
+          return '<div class="list-row"><div class="lr-main"><a class="lr-title" href="#/courses">' + esc(c.name) + '</a>' +
+            '<div class="lr-sub">' + esc(c.currentStage) + ' · ' + c.stagesDone + '/' + c.stageCount + ' stages</div></div>' +
+            '<div class="lr-side">' + targetChip(c.target, c.targetSort, c.provisional) + '</div></div>';
+        }).join('') + '</div></div>'
+        : '';
+
+      return '<article class="item customer">' +
+        '<div class="item-head"><h3>' + esc(cu.name) + '</h3>' +
+        '<div class="chips">' + chip(band.kind, band.label, band.glyph) + (d ? priorityChip(d.priority) : '') + '</div></div>' +
+        dealBlock + planBlock + courseBlock +
         '</article>';
+    }
+
+    var sections = CUSTOMER_BANDS.map(function (b) {
+      var items = list.filter(function (cu) { return cu.band === b.key; })
+        .sort(function (a, z) {
+          return priorityRank(a.deal && a.deal.priority) - priorityRank(z.deal && z.deal.priority) ||
+            a.name.localeCompare(z.name);
+        });
+      if (!items.length) return '';
+      return '<section class="stage-group"><div class="stage-group-head">' +
+        '<h2>' + esc(b.label) + '</h2><span class="chip ghost">' + items.length + '</span>' +
+        '<span class="hint">' + esc(b.blurb) + '</span></div>' +
+        '<div class="grid cards">' + items.map(customerCard).join('') + '</div></section>';
     }).join('');
 
-    return filters + (list.length ? '<div class="grid cards">' + cards + '</div>' : '<p class="empty">No projects match those filters.</p>');
+    return summary + '<div style="height:16px"></div>' + filters +
+      (list.length ? sections : '<p class="empty">No clients match those filters.</p>');
   };
 
   /* Which stage is this item sitting at? Used to break the long card walls into
@@ -1905,7 +1777,7 @@
   var TITLES = {
     overview: ['Overview', 'The whole company on one screen'],
     pipeline: ['Sales pipeline', 'Every live deal, its stage and its value'],
-    deals: ['Deal plans', 'The five milestones each deal has to clear'],
+    customers: ['Customer status', 'Who is live, who is nearly live, and the detail behind each'],
     courses: ['Course builds', 'Where every programme is in the ten-stage build'],
     projects: ['Projects', 'Pre-pipeline opportunities and who owns them'],
     updates: ['Updates', 'What has changed lately'],
@@ -1943,6 +1815,7 @@
 
   function loadRoute() {
     var hash = (location.hash || '#/overview').replace('#/', '');
+    if (hash === 'deals') hash = 'customers';
     state.route = views[hash] ? hash : 'overview';
   }
 
@@ -1959,7 +1832,7 @@
         if (again) { again.focus(); again.setSelectionRange(pos, pos); }
       }, 180));
     }
-    [['fstage', 'stage'], ['fpriority', 'priority'], ['fvertical', 'vertical'], ['fstatus', 'status'], ['fgroup', 'groupBy'], ['fperson', 'person']].forEach(function (pair) {
+    [['fband', 'band'], ['fstage', 'stage'], ['fpriority', 'priority'], ['fvertical', 'vertical'], ['fstatus', 'status'], ['fgroup', 'groupBy'], ['fperson', 'person']].forEach(function (pair) {
       var el = $('#' + pair[0], main);
       if (!el) return;
       el.addEventListener('change', function () {
