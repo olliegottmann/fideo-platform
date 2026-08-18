@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fideo Global — Company Dashboard</title>
+<meta name="description" content="One place for Fideo Global build progress, projects, sales pipeline and company updates.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23560BAD'/%3E%3Cg fill='none' stroke='%23fff' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M14 50a12 12 0 0 1 12-12'/%3E%3Cpath d='M14 50a17 17 0 0 1 17-17'/%3E%3Cpath d='M14 50a22 22 0 0 1 22-22'/%3E%3C/g%3E%3Cg fill='none' stroke='%23F9C300' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M40 26a8 8 0 0 1 8-8'/%3E%3Cpath d='M40 26a12 12 0 0 1 12-12'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64" role="img">
+          <g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" class="mark-arcs">
+            <path d="M12 52a10 10 0 0 1 10-10"/>
+            <path d="M12 52a15 15 0 0 1 15-15"/>
+            <path d="M12 52a20 20 0 0 1 20-20"/>
+            <path d="M12 52a25 25 0 0 1 25-25"/>
+            <path d="M12 52a30 30 0 0 1 30-30"/>
+          </g>
+          <g fill="none" stroke="#F9C300" stroke-width="2.6" stroke-linecap="round">
+            <path d="M40 24a7 7 0 0 1 7-7"/>
+            <path d="M40 24a11 11 0 0 1 11-11"/>
+            <path d="M40 24a15 15 0 0 1 15-15"/>
+          </g>
+        </svg>
+      </span>
+      <span class="brand-text">
+        <strong>Fideo</strong>
+        <small>Be The Benchmark</small>
+      </span>
+    </div>
+
+    <nav class="nav" aria-label="Sections">
+      <a href="#/overview"  data-route="overview">Overview</a>
+      <a href="#/pipeline"  data-route="pipeline">Sales pipeline</a>
+      <a href="#/deals"     data-route="deals">Deal plans</a>
+      <a href="#/courses"   data-route="courses">Course builds</a>
+      <a href="#/projects"  data-route="projects">Projects</a>
+      <a href="#/updates"   data-route="updates">Updates</a>
+      <a href="#/import"    data-route="import" class="nav-secondary">Update data</a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <p class="as-at" id="sidebarAsAt"></p>
+      <p class="sidebar-note">Everything here comes from the tracker spreadsheets. Upload a new one on <a href="#/import">Update data</a>.</p>
+    </div>
+  </aside>
+
+  <div class="content">
+    <header class="topbar">
+      <div>
+        <h1 id="pageTitle">Overview</h1>
+        <p class="page-sub" id="pageSub"></p>
+      </div>
+      <div class="topbar-right" id="topbarRight"></div>
+    </header>
+
+    <main id="main" tabindex="-1"></main>
+
+    <footer class="site-foot">
+      <span>Fideo Global — internal dashboard</span>
+      <span id="footStamp"></span>
+    </footer>
+  </div>
+</div>
+
+<div id="tooltip" class="tooltip" role="status" aria-live="polite"></div>
+
+<script src="data/dashboard.js"></script>
+<script src="assets/parse.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
