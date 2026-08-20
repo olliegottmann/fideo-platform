@@ -484,3 +484,13 @@ details.archive-card summary {
 details.archive-card summary::-webkit-details-marker { display: none; }
 details.archive-card summary::before { content: 25B8; display: inline-block; margin-right: 8px; color: var(--ink-3); }
 details.archive-card[open] summary::before { transform: rotate(90deg); }
+
+/* dragging the priority list */
+.list-row.draggable { cursor: grab; border-radius: 8px; transition: background .12s; }
+.list-row.draggable:hover { background: #FBF8FE; }
+.list-row.draggable:active { cursor: grabbing; }
+.list-row.dragging { opacity: .45; background: var(--p1); }
+.grip { color: #C6C3CB; font-size: 13px; line-height: 1; flex: 0 0 auto; cursor: grab; letter-spacing: -2px; }
+.list-row.draggable:hover .grip { color: var(--brand); }
+.list-row.drop-above { box-shadow: inset 0 2px 0 var(--brand); }
+.list-row.drop-below { box-shadow: inset 0 -2px 0 var(--brand); }

@@ -226,18 +226,38 @@
      something out of the computed order, at which point every client gets an
      explicit position so later moves are stable. */
   function dealOrder() { return (state.data.overrides && state.data.overrides.dealOrder) || {}; }
-  function moveDeal(client, direction) {
-    var ranked = salesRanking(deals().filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; }));
-    var names = ranked.map(function (r) { return r.deal.client; });
-    var i = names.indexOf(client);
-    var j = i + direction;
-    if (i < 0 || j < 0 || j >= names.length) return;
-    names.splice(j, 0, names.splice(i, 1)[0]);
+  function rankedClientNames() {
+    return salesRanking(deals().filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; }))
+      .map(function (r) { return r.deal.client; });
+  }
+  function persistOrder(names) {
     var data = JSON.parse(JSON.stringify(state.data));
     data.overrides = data.overrides || {};
     data.overrides.dealOrder = {};
     names.forEach(function (n, idx) { data.overrides.dealOrder[n] = idx; });
     savePreview(data);
+  }
+  function moveDeal(client, direction) {
+    var names = rankedClientNames();
+    var i = names.indexOf(client);
+    var j = i + direction;
+    if (i < 0 || j < 0 || j >= names.length) return;
+    names.splice(j, 0, names.splice(i, 1)[0]);
+    persistOrder(names);
+  }
+  /* Dropping one client onto another. Worked out against the full ranked list,
+     not just the rows on screen, so reordering the visible top eight cannot
+     scramble the order of everyone below them. */
+  function dropDealBefore(dragged, target, after) {
+    if (!dragged || dragged === target) return;
+    var names = rankedClientNames();
+    var from = names.indexOf(dragged);
+    if (from < 0) return;
+    names.splice(from, 1);
+    var at = names.indexOf(target);
+    if (at < 0) return;
+    names.splice(at + (after ? 1 : 0), 0, dragged);
+    persistOrder(names);
   }
 
   var EDIT_PRIORITIES = ['High', 'Medium', 'Low', 'Monitor', 'Dead'];
@@ -1076,7 +1096,9 @@
       '<div class="list ranked">' + shown.map(function (r, i) {
         var d = r.deal;
         var mismatch = i < 5 && ['LOW', 'MONITOR'].indexOf(String(d.priority).toUpperCase()) !== -1;
-        return '<div class="list-row"><span class="rank">' + (i + 1) + '</span>' +
+        return '<div class="list-row draggable" draggable="true" data-client="' + esc(d.client) + '">' +
+          '<span class="grip" aria-hidden="true" title="Drag to reorder">⠿</span>' +
+          '<span class="rank">' + (i + 1) + '</span>' +
           '<span class="movers">' +
           '<button class="mover" data-move-deal="' + esc(d.client) + '" data-direction="-1" title="Move up"' +
           (i === 0 ? ' disabled' : '') + '>▲</button>' +
@@ -2331,6 +2353,55 @@
       });
       dz.addEventListener('drop', function (e) { handleFiles(e.dataTransfer.files); });
     }
+
+    /* --- dragging clients up and down the priority list ---
+       The arrows stay for keyboards and touch screens, where HTML5 dragging
+       either does not fire or is painful. */
+    (function () {
+      var rows = $$('.list-row.draggable', main);
+      if (!rows.length) return;
+      var dragged = null;
+
+      function clearMarks() {
+        rows.forEach(function (r) { r.classList.remove('drop-above', 'drop-below', 'dragging'); });
+      }
+      function isAfter(row, clientY) {
+        var rect = row.getBoundingClientRect();
+        return (clientY - rect.top) > rect.height / 2;
+      }
+
+      rows.forEach(function (row) {
+        row.addEventListener('dragstart', function (e) {
+          dragged = row.getAttribute('data-client');
+          row.classList.add('dragging');
+          e.dataTransfer.effectAllowed = 'move';
+          try { e.dataTransfer.setData('text/plain', dragged); } catch (err) { /* older browsers */ }
+        });
+        row.addEventListener('dragend', clearMarks);
+        row.addEventListener('dragover', function (e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          if (row.getAttribute('data-client') === dragged) return;
+          var after = isAfter(row, e.clientY);
+          row.classList.toggle('drop-below', after);
+          row.classList.toggle('drop-above', !after);
+        });
+        row.addEventListener('dragleave', function () {
+          row.classList.remove('drop-above', 'drop-below');
+        });
+        row.addEventListener('drop', function (e) {
+          e.preventDefault();
+          var from = dragged;
+          try { from = e.dataTransfer.getData('text/plain') || dragged; } catch (err) { /* ignore */ }
+          var target = row.getAttribute('data-client');
+          var after = isAfter(row, e.clientY);
+          clearMarks();
+          dragged = null;
+          dropDealBefore(from, target, after);
+          render();
+        });
+      });
+    })();
 
     /* --- editing clients on the sales pipeline --- */
     $$('[data-edit-deal]', main).forEach(function (btn) {
