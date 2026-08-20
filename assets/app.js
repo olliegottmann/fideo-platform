@@ -245,6 +245,38 @@
     names.splice(j, 0, names.splice(i, 1)[0]);
     persistOrder(names);
   }
+  function courseOrder() { return (state.data.overrides && state.data.overrides.courseOrder) || {}; }
+  function rankedCourseNames() {
+    return buildRanking(courses().filter(function (c) { return c.name && c.progress < 100 && isHigh(c); }), liveDeals())
+      .map(function (r) { return r.course.name; });
+  }
+  function persistCourseOrder(names) {
+    var data = JSON.parse(JSON.stringify(state.data));
+    data.overrides = data.overrides || {};
+    data.overrides.courseOrder = {};
+    names.forEach(function (n, idx) { data.overrides.courseOrder[n] = idx; });
+    savePreview(data);
+  }
+  function moveCourse(name, direction) {
+    var names = rankedCourseNames();
+    var i = names.indexOf(name);
+    var j = i + direction;
+    if (i < 0 || j < 0 || j >= names.length) return;
+    names.splice(j, 0, names.splice(i, 1)[0]);
+    persistCourseOrder(names);
+  }
+  function dropCourseBefore(dragged, target, after) {
+    if (!dragged || dragged === target) return;
+    var names = rankedCourseNames();
+    var from = names.indexOf(dragged);
+    if (from < 0) return;
+    names.splice(from, 1);
+    var at = names.indexOf(target);
+    if (at < 0) return;
+    names.splice(at + (after ? 1 : 0), 0, dragged);
+    persistCourseOrder(names);
+  }
+
   /* Dropping one client onto another. Worked out against the full ranked list,
      not just the rows on screen, so reordering the visible top eight cannot
      scramble the order of everyone below them. */
@@ -632,6 +664,13 @@
       var t = buildTier(c, dealList);
       return { course: c, tier: t.tier, deal: t.deal, why: t.why };
     }).sort(function (a, b) {
+      var order = courseOrder();
+      if (Object.keys(order).length) {
+        var ai = order[a.course.name], bi = order[b.course.name];
+        if (ai == null) ai = 9999;
+        if (bi == null) bi = 9999;
+        if (ai !== bi) return ai - bi;
+      }
       return a.tier - b.tier ||
         (a.course.targetSort || 999999) - (b.course.targetSort || 999999) ||
         priorityRank(a.course.priority) - priorityRank(b.course.priority) ||
@@ -1724,9 +1763,21 @@
     var highs = buildRanking(all.filter(function (c) { return c.priority === 'HIGH' && c.progress < 100; }), liveDeals());
     var highCard = '<section class="card"><div class="card-head"><h2>High priority builds</h2>' +
       '<span class="hint">High-rated courses only · ' + highs.length + ' of them, in build-priority order</span></div>' +
-      (highs.length ? '<div class="list ranked">' + highs.slice(0, 10).map(function (r, i) {
+      (Object.keys(courseOrder()).length
+        ? ruleNote('<b>This order has been set by hand</b> — the build rule no longer decides it. ' +
+          '<button class="btn btn-sm" id="resetCourseOrder">Back to the rule</button>')
+        : '') +
+      (highs.length ? '<div class="list ranked">' + highs.slice(0, 12).map(function (r, i) {
         var t = BUILD_TIERS[r.tier];
-        return '<div class="list-row"><span class="rank">' + (i + 1) + '</span><div class="lr-main">' +
+        return '<div class="list-row draggable" draggable="true" data-course="' + esc(r.course.name) + '">' +
+          '<span class="grip" aria-hidden="true" title="Drag to reorder">⠿</span>' +
+          '<span class="rank">' + (i + 1) + '</span>' +
+          '<span class="movers">' +
+          '<button class="mover" data-move-course="' + esc(r.course.name) + '" data-direction="-1" title="Move up"' +
+          (i === 0 ? ' disabled' : '') + '>▲</button>' +
+          '<button class="mover" data-move-course="' + esc(r.course.name) + '" data-direction="1" title="Move down"' +
+          (i === Math.min(highs.length, 12) - 1 ? ' disabled' : '') + '>▼</button></span>' +
+          '<div class="lr-main">' +
           '<div class="lr-title">' + esc(r.course.name) + '</div>' +
           '<div class="lr-sub">' + esc(r.course.currentStage) + '</div></div>' +
           '<div class="lr-side">' + chip(t.kind, t.label) + ' ' +
@@ -2378,7 +2429,7 @@
 
       rows.forEach(function (row) {
         row.addEventListener('dragstart', function (e) {
-          dragged = row.getAttribute('data-client');
+          dragged = row.getAttribute('data-client') || row.getAttribute('data-course');
           row.classList.add('dragging');
           e.dataTransfer.effectAllowed = 'move';
           try { e.dataTransfer.setData('text/plain', dragged); } catch (err) { /* older browsers */ }
@@ -2387,7 +2438,7 @@
         row.addEventListener('dragover', function (e) {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
-          if (row.getAttribute('data-client') === dragged) return;
+          if ((row.getAttribute('data-client') || row.getAttribute('data-course')) === dragged) return;
           var after = isAfter(row, e.clientY);
           row.classList.toggle('drop-below', after);
           row.classList.toggle('drop-above', !after);
@@ -2399,11 +2450,13 @@
           e.preventDefault();
           var from = dragged;
           try { from = e.dataTransfer.getData('text/plain') || dragged; } catch (err) { /* ignore */ }
-          var target = row.getAttribute('data-client');
+          var isCourse = !!row.getAttribute('data-course');
+          var target = row.getAttribute('data-client') || row.getAttribute('data-course');
           var after = isAfter(row, e.clientY);
           clearMarks();
           dragged = null;
-          dropDealBefore(from, target, after);
+          if (isCourse) dropCourseBefore(from, target, after);
+          else dropDealBefore(from, target, after);
           render();
         });
       });
@@ -2440,6 +2493,18 @@
         moveDeal(btn.getAttribute('data-move-deal'), +btn.getAttribute('data-direction'));
         render();
       });
+    });
+    $$('[data-move-course]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        moveCourse(btn.getAttribute('data-move-course'), +btn.getAttribute('data-direction'));
+        render();
+      });
+    });
+    on('#resetCourseOrder', 'click', function () {
+      var data = JSON.parse(JSON.stringify(state.data));
+      if (data.overrides) delete data.overrides.courseOrder;
+      savePreview(data);
+      render();
     });
     on('#resetOrder', 'click', function () {
       var data = JSON.parse(JSON.stringify(state.data));
