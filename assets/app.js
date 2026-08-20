@@ -142,8 +142,137 @@
     loadData();
   }
 
-  function deals() { return (state.data.pipeline && state.data.pipeline.deals) || []; }
-  function courses() { return (state.data.courses && state.data.courses.items) || []; }
+  /* ---------- edits ----------
+     The spreadsheets are the base layer; anything edited here is stored
+     separately, keyed by client or course name, so the next upload refreshes the
+     sheet data without wiping what people have changed on the platform. An edited
+     field wins over the sheet, and says so on screen. */
+  function ovr(kind) {
+    return (state.data.overrides && state.data.overrides[kind]) || {};
+  }
+  function setOvr(kind, key, patch) {
+    var data = JSON.parse(JSON.stringify(state.data));
+    data.overrides = data.overrides || {};
+    data.overrides[kind] = data.overrides[kind] || {};
+    var existing = data.overrides[kind][key] || {};
+    Object.keys(patch).forEach(function (k) { existing[k] = patch[k]; });
+    existing.editedAt = new Date().toISOString().slice(0, 10);
+    data.overrides[kind][key] = existing;
+    savePreview(data);
+  }
+  function clearOvrField(kind, key, field) {
+    var data = JSON.parse(JSON.stringify(state.data));
+    if (data.overrides && data.overrides[kind] && data.overrides[kind][key]) {
+      delete data.overrides[kind][key][field];
+      savePreview(data);
+    }
+  }
+  function reFlag(notes, fallback) {
+    return window.FideoParse && window.FideoParse.flagsFor ? window.FideoParse.flagsFor(notes) : (fallback || []);
+  }
+  function applyTarget(out, label) {
+    out.target = label;
+    var t = window.FideoParse ? window.FideoParse.parseTarget(label) : { sortKey: null, provisional: false };
+    out.targetSort = t.sortKey;
+    out.provisional = t.provisional;
+  }
+  function copyOf(obj) {
+    var out = {};
+    Object.keys(obj).forEach(function (k) { out[k] = obj[k]; });
+    return out;
+  }
+
+  function allDeals() {
+    var raw = (state.data.pipeline && state.data.pipeline.deals) || [];
+    var edits = ovr('deals');
+    return raw.map(function (d) {
+      var e = edits[d.client];
+      if (!e) return d;
+      var out = copyOf(d);
+      out.edited = [];
+      if (e.priority) { out.priority = e.priority; out.edited.push('priority'); }
+      if (e.step) { out.step = e.step; out.edited.push('step'); }
+      if (e.notes != null) { out.notes = e.notes; out.flags = reFlag(e.notes, d.flags); out.edited.push('notes'); }
+      if (e.target != null) { applyTarget(out, e.target); out.edited.push('target'); }
+      if (e.archived) out.archived = true;
+      out.editedAt = e.editedAt;
+      return out;
+    });
+  }
+  function deals() { return allDeals().filter(function (d) { return !d.archived; }); }
+  function archivedDeals() { return allDeals().filter(function (d) { return d.archived; }); }
+
+  function allCourses() {
+    var raw = (state.data.courses && state.data.courses.items) || [];
+    var edits = ovr('courses');
+    return raw.map(function (c) {
+      var e = edits[c.name];
+      if (!e) return c;
+      var out = copyOf(c);
+      out.edited = [];
+      if (e.priority) { out.priority = e.priority; out.edited.push('priority'); }
+      if (e.notes != null) { out.notes = e.notes; out.flags = reFlag(e.notes, c.flags); out.edited.push('notes'); }
+      if (e.owner != null) { out.owner = e.owner; out.edited.push('owner'); }
+      if (e.target != null) { applyTarget(out, e.target); out.edited.push('target'); }
+      if (e.archived) out.archived = true;
+      out.editedAt = e.editedAt;
+      return out;
+    });
+  }
+  function courses() { return allCourses().filter(function (c) { return !c.archived; }); }
+  function archivedCourses() { return allCourses().filter(function (c) { return c.archived; }); }
+
+  /* Manual ordering of the sales priority list. Empty until somebody drags
+     something out of the computed order, at which point every client gets an
+     explicit position so later moves are stable. */
+  function dealOrder() { return (state.data.overrides && state.data.overrides.dealOrder) || {}; }
+  function moveDeal(client, direction) {
+    var ranked = salesRanking(deals().filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; }));
+    var names = ranked.map(function (r) { return r.deal.client; });
+    var i = names.indexOf(client);
+    var j = i + direction;
+    if (i < 0 || j < 0 || j >= names.length) return;
+    names.splice(j, 0, names.splice(i, 1)[0]);
+    var data = JSON.parse(JSON.stringify(state.data));
+    data.overrides = data.overrides || {};
+    data.overrides.dealOrder = {};
+    names.forEach(function (n, idx) { data.overrides.dealOrder[n] = idx; });
+    savePreview(data);
+  }
+
+  var EDIT_PRIORITIES = ['High', 'Medium', 'Low', 'Monitor', 'Dead'];
+
+  /* The editor that hangs under a client row on the sales pipeline. */
+  function dealEditor(d) {
+    var open = state.filters.editingDeal === d.client;
+    if (!open) return '';
+    var stepOptions = PROCESS.filter(function (p) { return !p.gate; }).map(function (p) {
+      return '<option value="' + p.id + '"' + (currentStepOf(d) === p.id ? ' selected' : '') + '>' +
+        esc(p.id + '. ' + p.name) + '</option>';
+    }).join('');
+    return '<tr class="editor-row"><td colspan="6"><div class="editor">' +
+      '<div class="editor-grid">' +
+      '<label>Step on the process<select class="ed-step" data-client="' + esc(d.client) + '">' + stepOptions + '</select></label>' +
+      '<label>Priority<select class="ed-priority" data-client="' + esc(d.client) + '">' +
+      EDIT_PRIORITIES.map(function (p) {
+        return '<option' + (String(d.priority).toLowerCase() === p.toLowerCase() ? ' selected' : '') + '>' + p + '</option>';
+      }).join('') + '</select></label>' +
+      '<label>Target go-live<input type="text" class="ed-target" data-client="' + esc(d.client) + '" value="' +
+      esc(d.target || '') + '" placeholder="e.g. Q4 2026"></label>' +
+      '</div>' +
+      '<label class="editor-notes">Next action / notes<textarea class="ed-notes" data-client="' + esc(d.client) + '">' +
+      esc(d.notes || '') + '</textarea></label>' +
+      '<div class="editor-actions">' +
+      '<button class="btn" data-close-editor="1">Done</button>' +
+      '<button class="btn" data-archive-deal="' + esc(d.client) + '">Archive this client</button>' +
+      (d.edited && d.edited.length ? '<span class="hint">Edited here: ' + esc(d.edited.join(', ')) +
+        (d.editedAt ? ' · ' + esc(dateLabel(d.editedAt)) : '') + '</span>' : '') +
+      '</div></div></td></tr>';
+  }
+
+  function currentStepOf(d) {
+    return d.step || STAGE_TO_STEP[d.stageNum] || '1';
+  }
   function projects() { return (state.data.projects && state.data.projects.items) || []; }
   function plans() { return (state.data.dealPlans && state.data.dealPlans.items) || []; }
 
@@ -292,7 +421,7 @@
     var byStep = {};
     PROCESS.forEach(function (p) { byStep[p.id] = []; });
     list.forEach(function (d) {
-      var id = STAGE_TO_STEP[d.stageNum];
+      var id = currentStepOf(d);
       if (id && byStep[id]) byStep[id].push(d);
     });
     return PROCESS.map(function (p) { return { step: p, deals: byStep[p.id] }; });
@@ -306,7 +435,7 @@
 
     var boxes = groups.map(function (g) {
       var n = g.deals.length;
-      var isTracked = !!tracked[g.step.id];
+      var isTracked = !!tracked[g.step.id] || n > 0;
       var tip = g.step.detail + ' Led by ' + expandInitials(g.step.lead) + '.' +
         (isTracked ? '' : ' The tracker does not record this step, so no client can be counted here.');
       return '<button class="pstep' + (g.step.gate ? ' gate' : '') + (open === g.step.id ? ' open' : '') +
@@ -380,6 +509,14 @@
         unvalued: d.revenue == null
       };
     }).sort(function (a, b) {
+      var order = dealOrder();
+      var manual = Object.keys(order).length > 0;
+      if (manual) {
+        var ai = order[a.deal.client], bi = order[b.deal.client];
+        if (ai == null) ai = 9999;
+        if (bi == null) bi = 9999;
+        if (ai !== bi) return ai - bi;
+      }
       return b.score - a.score || (a.deal.client || '').localeCompare(b.deal.client || '');
     });
   }
@@ -878,6 +1015,55 @@
   }
 
   /* ---------- views ---------- */
+  /* Archived clients and courses. Nothing is deleted — archiving takes something
+     out of every list, count and ranking, and it can come back. */
+  function archiveCard(kind) {
+    var items = kind === 'deals' ? archivedDeals() : archivedCourses();
+    var label = kind === 'deals' ? 'client' : 'course';
+    if (!items.length) {
+      return '<details class="card archive-card"><summary>Archive — nothing archived yet</summary>' +
+        '<p class="hint" style="margin-top:10px">Archiving a ' + (kind === 'deals' ? 'client' : 'course') +
+        ' removes it from every list and count here, without touching the spreadsheet. It can be restored at any time.</p></details>';
+    }
+    return '<details class="card archive-card"><summary>Archive — ' + items.length + ' ' + label + (items.length === 1 ? '' : 's') + '</summary>' +
+      '<div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Name</th><th>Last known status</th>' +
+      '<th>Archived</th><th></th></tr></thead><tbody>' +
+      items.map(function (x) {
+        var name = kind === 'deals' ? x.client : x.name;
+        var status = kind === 'deals' ? (x.stageLabel || x.stage || '—') : x.currentStage;
+        return '<tr><td class="client-cell">' + esc(name) + '</td>' +
+          '<td>' + esc(status) + '</td>' +
+          '<td>' + esc(x.editedAt ? dateLabel(x.editedAt) : '—') + '</td>' +
+          '<td><button class="btn btn-sm" data-restore-' + (kind === 'deals' ? 'deal' : 'course') + '="' + esc(name) + '">Restore</button></td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="hint" style="margin-top:10px">Archived items stay out of every count and ranking until restored. ' +
+      'They are still in the spreadsheet — this only affects what the platform shows.</p></details>';
+  }
+
+  /* The editor that hangs under a course row in the grid. */
+  function courseEditor(c, colspan) {
+    if (state.filters.editingCourse !== c.name) return '';
+    return '<tr class="editor-row"><td colspan="' + colspan + '"><div class="editor">' +
+      '<div class="editor-grid">' +
+      '<label>Priority<select class="ec-priority" data-course-name="' + esc(c.name) + '">' +
+      ['HIGH', 'MEDIUM', 'LOW', 'UNSET'].map(function (p) {
+        return '<option' + (String(c.priority).toUpperCase() === p ? ' selected' : '') + '>' + p + '</option>';
+      }).join('') + '</select></label>' +
+      '<label>Go-live target<input type="text" class="ec-target" data-course-name="' + esc(c.name) + '" value="' +
+      esc(c.target || '') + '" placeholder="e.g. End Oct 2026"></label>' +
+      '<label>Owner<input type="text" class="ec-owner" data-course-name="' + esc(c.name) + '" value="' +
+      esc(c.owner || '') + '" placeholder="e.g. AQ/OM"></label>' +
+      '</div>' +
+      '<label class="editor-notes">Notes / blockers<textarea class="ec-notes" data-course-name="' + esc(c.name) + '">' +
+      esc(c.notes || '') + '</textarea></label>' +
+      '<div class="editor-actions">' +
+      '<button class="btn" data-edit-course="' + esc(c.name) + '">Done</button>' +
+      '<button class="btn" data-archive-course="' + esc(c.name) + '">Archive this course</button>' +
+      (c.edited && c.edited.length ? '<span class="hint">Edited here: ' + esc(c.edited.join(', ')) +
+        (c.editedAt ? ' · ' + esc(dateLabel(c.editedAt)) : '') + '</span>' : '') +
+      '</div></div></td></tr>';
+  }
+
   var views = {};
 
   function salesPriorityCard(list, limit) {
@@ -886,11 +1072,16 @@
     if (!shown.length) return '';
     return '<section class="card"><div class="card-head"><h2>Sales priority order</h2>' +
       '<span class="hint">' + (limit ? 'top ' + limit + ' of ' + ranked.length : ranked.length + ' live deals') + '</span></div>' +
-      ruleNote(esc(PRIORITY_RULE_SALES)) +
+      ruleNote(esc(PRIORITY_RULE_SALES) + (Object.keys(dealOrder()).length ? ' <b>This list has been reordered by hand</b> — the rule no longer decides it. <button class="btn btn-sm" id="resetOrder">Back to the rule</button>' : '')) +
       '<div class="list ranked">' + shown.map(function (r, i) {
         var d = r.deal;
         var mismatch = i < 5 && ['LOW', 'MONITOR'].indexOf(String(d.priority).toUpperCase()) !== -1;
         return '<div class="list-row"><span class="rank">' + (i + 1) + '</span>' +
+          '<span class="movers">' +
+          '<button class="mover" data-move-deal="' + esc(d.client) + '" data-direction="-1" title="Move up"' +
+          (i === 0 ? ' disabled' : '') + '>▲</button>' +
+          '<button class="mover" data-move-deal="' + esc(d.client) + '" data-direction="1" title="Move down"' +
+          (i === shown.length - 1 ? ' disabled' : '') + '>▼</button></span>' +
           '<div class="lr-main"><div class="lr-title">' + esc(d.client) + '</div>' +
           '<div class="lr-sub">' + esc(d.stageLabel || d.stage) + ' — ' +
           (d.revenue != null ? esc(money(d.revenue)) + ' a year' : 'no value recorded') + '</div>' +
@@ -992,7 +1183,7 @@
 
     var boxes = groups.filter(function (g) { return !g.step.gate; }).map(function (g) {
       var n = g.deals.length;
-      var isTracked = !!tracked[g.step.id];
+      var isTracked = !!tracked[g.step.id] || n > 0;
       var gateBefore = g.step.id === '5' ? 'Gate 1' : (g.step.id === '7' ? 'Gate 2' : '');
       return (gateBefore ? '<span class="gate-marker" data-tip="' +
         (gateBefore === 'Gate 1' ? 'Commercial Alignment Checkpoint — agreement to progress to commercial discussions.'
@@ -1149,7 +1340,7 @@
     PROCESS.forEach(function (p) { if (!p.gate) placed[p.id] = []; });
     var unplaced = [];
     list.forEach(function (d) {
-      var id = STAGE_TO_STEP[d.stageNum];
+      var id = currentStepOf(d);
       if (id && placed[id]) placed[id].push(d);
       else unplaced.push(d);
     });
@@ -1166,7 +1357,9 @@
           '<td>' + targetChip(d.target, d.targetSort) + '</td>' +
           '<td class="note">' + esc(d.notes) +
           (d.flags.length ? '<div class="chips" style="margin-top:6px">' + flagChips(d.flags) + '</div>' : '') + '</td>' +
-          '</tr>';
+          '<td><button class="btn btn-sm" data-edit-deal="' + esc(d.client) + '">' +
+          (state.filters.editingDeal === d.client ? 'Close' : 'Edit') + '</button></td>' +
+          '</tr>' + dealEditor(d);
       }).join('');
     }
 
@@ -1184,9 +1377,9 @@
 
       var body = items.length
         ? '<div class="table-wrap"><table><thead><tr><th>Client / partner</th><th>Vertical</th>' +
-        '<th>Priority</th><th>Target go-live</th><th>Next action / notes</th></tr></thead>' +
+        '<th>Priority</th><th>Target go-live</th><th>Next action / notes</th><th></th></tr></thead>' +
         '<tbody>' + dealRows(items) + '</tbody></table></div>'
-        : '<p class="empty">' + (tracked[p.id]
+        : '<p class="empty">' + (tracked[p.id] || items.length
           ? 'No clients at this step.'
           : 'The sales tracker does not record this step, so nobody can be placed here yet. Add a step column to the tracker and this fills in.') + '</p>';
 
@@ -1197,13 +1390,16 @@
       ? '<section class="stage-group"><div class="stage-group-head"><h2>Not on the process yet</h2>' +
       '<span class="chip ghost">' + unplaced.length + '</span></div>' +
       '<div class="table-wrap"><table><thead><tr><th>Client / partner</th><th>Vertical</th>' +
-      '<th>Priority</th><th>Target go-live</th><th>Next action / notes</th></tr></thead>' +
+      '<th>Priority</th><th>Target go-live</th><th>Next action / notes</th><th></th></tr></thead>' +
       '<tbody>' + dealRows(unplaced) + '</tbody></table></div></section>'
       : '';
 
-    return banner + salesPriorityCard(list.filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; }), 8) +
+    return banner + salesStepsCard(all.filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; })) +
+      '<div style="height:16px"></div>' +
+      salesPriorityCard(list.filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; }), 8) +
       '<div style="height:18px"></div>' + filters +
-      (list.length ? sections + leftovers : '<p class="empty">No deals match those filters.</p>');
+      (list.length ? sections + leftovers : '<p class="empty">No deals match those filters.</p>') +
+      '<div style="height:16px"></div>' + archiveCard('deals');
   };
 
   function uniqStages(all) {
@@ -1398,6 +1594,261 @@
         '<div class="grid cards">' + g.items.map(cardFn).join('') + '</div>' +
         '</section>';
     }).join('');
+  }
+
+  function updateRow(u) {
+    return '<div class="tl-item"><div class="tl-date">' + esc(dateLabel(u.date)) + '<br>' + (u.tag ? chip('ghost', u.tag) : '') + '</div>' +
+      '<div class="tl-body"><h3>' + esc(u.title) + '</h3><p>' + esc(u.body || '') + '</p></div></div>';
+  }
+
+  /* Resolve a stage's date and owner: an agreed value if someone has typed one,
+     otherwise the standard build's suggestion worked back from the go-live target. */
+  function stageCell(c, i, plan, saved, m) {
+    var own = saved[i] || {};
+    var due = own.due ? new Date(own.due) : (plan.deadlines[i] || null);
+    var who = own.who || m.roles[i] || '';
+    return {
+      due: due, who: who, agreed: !!(own.due || own.who),
+      status: c.steps[i].key,
+      overdue: due && due < new Date() && c.steps[i].key !== 'done'
+    };
+  }
+
+  function everyStageCell() {
+    var m = buildModel(), out = [];
+    courses().forEach(function (c) {
+      if (!c.name) return;
+      var plan = coursePlan(c), saved = stagePlanFor(c.name);
+      c.steps.forEach(function (st, i) {
+        out.push({ course: c, index: i, stage: st, cell: stageCell(c, i, plan, saved, m) });
+      });
+    });
+    return out;
+  }
+
+  function tasksByPerson() {
+    var byPerson = {};
+    everyStageCell().forEach(function (x) {
+      if (x.stage.key === 'done') return;
+      var names = String(x.cell.who || 'Unassigned').split(/[\/,]| and /)
+        .map(function (n) { return n.trim(); }).filter(Boolean);
+      if (!names.length) names = ['Unassigned'];
+      names.forEach(function (n) {
+        if (!byPerson[n]) byPerson[n] = { person: n, open: 0, active: 0, overdue: 0, items: [] };
+        byPerson[n].open++;
+        if (x.stage.key === 'active') byPerson[n].active++;
+        if (x.cell.overdue) byPerson[n].overdue++;
+        byPerson[n].items.push(x);
+      });
+    });
+    return Object.keys(byPerson).map(function (k) { return byPerson[k]; })
+      .sort(function (a, b) { return b.overdue - a.overdue || b.active - a.active || b.open - a.open; });
+  }
+
+  function slipLogCard() {
+    var all = slips().slice().sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+    if (!all.length) {
+      return '<section class="card"><div class="card-head"><h2>Dates that have moved</h2>' +
+        '<span class="hint">recorded from the next upload onwards</span></div>' +
+        '<p class="empty">No go-live date has moved yet. When one does, the upload asks why before applying it.</p></section>';
+    }
+    var unexplained = all.filter(function (x) { return !x.reason; }).length;
+    return '<section class="card"><div class="card-head"><h2>Dates that have moved</h2>' +
+      '<span class="hint">' + all.length + ' changes · ' + unexplained + ' with no reason given</span></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Recorded</th><th>Course</th><th>From</th><th>To</th>' +
+      '<th>Reason given</th><th>Agreed with</th></tr></thead><tbody>' +
+      all.slice(0, 15).map(function (x) {
+        return '<tr><td>' + esc(dateLabel(x.date)) + '</td><td class="client-cell">' + esc(x.course) + '</td>' +
+          '<td>' + esc(x.from) + '</td><td>' + esc(x.to) + '</td>' +
+          '<td class="note">' + (x.reason ? esc(x.reason) : chip('risk', 'No reason given', '!')) + '</td>' +
+          '<td>' + esc(x.agreedBy || '—') + '</td></tr>';
+      }).join('') + '</tbody></table></div></section>';
+  }
+
+  views.courses = function () {
+    var f = state.filters.courses = state.filters.courses || { q: '', priority: '', person: '' };
+    var m = buildModel();
+    var stages = (state.data.courses.stageNames || []);
+    var all = courses().filter(function (c) { return c.name; });
+
+    var list = all.filter(function (c) {
+      if (f.priority && c.priority !== f.priority) return false;
+      if (f.q && (c.name + ' ' + c.notes + ' ' + c.owner).toLowerCase().indexOf(f.q.toLowerCase()) === -1) return false;
+      if (f.person) {
+        var saved = stagePlanFor(c.name), plan = coursePlan(c);
+        var hit = c.steps.some(function (st, i) {
+          return String(stageCell(c, i, plan, saved, m).who).toUpperCase().indexOf(f.person.toUpperCase()) !== -1;
+        });
+        if (!hit) return false;
+      }
+      return true;
+    }).sort(function (a, b) {
+      return priorityRank(a.priority) - priorityRank(b.priority) ||
+        (a.targetSort || 999999) - (b.targetSort || 999999);
+    });
+
+    var people = tasksByPerson();
+
+    /* 1. the ten stages across the top, same strip as the Overview */
+    var strip = buildStagesCard();
+
+    /* 2. high priority builds */
+    var highs = buildRanking(all.filter(function (c) { return c.priority === 'HIGH' && c.progress < 100; }), liveDeals());
+    var highCard = '<section class="card"><div class="card-head"><h2>High priority builds</h2>' +
+      '<span class="hint">' + highs.length + ' courses, in build-priority order</span></div>' +
+      (highs.length ? '<div class="list ranked">' + highs.slice(0, 10).map(function (r, i) {
+        var t = BUILD_TIERS[r.tier];
+        return '<div class="list-row"><span class="rank">' + (i + 1) + '</span><div class="lr-main">' +
+          '<div class="lr-title">' + esc(r.course.name) + '</div>' +
+          '<div class="lr-sub">' + esc(r.course.currentStage) + '</div></div>' +
+          '<div class="lr-side">' + chip(t.kind, t.label) + ' ' +
+          targetChip(r.course.target, r.course.targetSort, r.course.provisional) + '</div></div>';
+      }).join('') + '</div>' : '<p class="empty">Nothing marked High.</p>') + '</section>';
+
+    /* 3. anything overdue */
+    var overdue = everyStageCell().filter(function (x) { return x.cell.overdue; })
+      .sort(function (a, b) { return a.cell.due - b.cell.due; });
+    var overdueCard = '<section class="card"><div class="card-head"><h2>Overdue stages</h2>' +
+      '<span class="hint">' + overdue.length + ' past their date across ' +
+      uniq(overdue.map(function (x) { return x.course.name; })).length + ' courses</span></div>' +
+      (overdue.length
+        ? '<div class="table-wrap"><table><thead><tr><th>Course</th><th>Stage</th><th>Was due</th>' +
+        '<th>Days late</th><th>Responsible</th></tr></thead><tbody>' +
+        overdue.slice(0, 20).map(function (x) {
+          return '<tr class="row-late"><td class="client-cell">' + esc(x.course.name) + '</td>' +
+            '<td>' + (x.index + 1) + '. ' + esc(x.stage.name) + '</td>' +
+            '<td>' + esc(fmtDate(x.cell.due)) + '</td>' +
+            '<td class="num">' + chip('risk', String(workingDaysBetween(x.cell.due, new Date())), '!') + '</td>' +
+            '<td><span data-tip="' + esc(expandInitials(x.cell.who)) + '">' + esc(x.cell.who || '—') + '</span></td></tr>';
+        }).join('') + '</tbody></table></div>'
+        : '<p class="empty">Nothing is past its stage date.</p>') + '</section>';
+
+    /* 4. who is carrying what */
+    var peopleCard = '<section class="card"><div class="card-head"><h2>Who is on what</h2>' +
+      '<span class="hint">every stage still to do, by the person responsible</span></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>Person</th><th>Role</th><th>Stages still to do</th>' +
+      '<th>In progress now</th><th>Overdue</th></tr></thead><tbody>' +
+      people.map(function (p) {
+        return '<tr><td class="client-cell">' + esc(p.person) + '</td>' +
+          '<td class="note">' + esc(roleName(p.person) || '—') + '</td>' +
+          '<td class="num">' + p.open + '</td>' +
+          '<td class="num">' + (p.active ? chip('active', String(p.active), '▶') : '0') + '</td>' +
+          '<td class="num">' + (p.overdue ? chip('risk', String(p.overdue), '!') : '0') + '</td></tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<p class="hint" style="margin-top:10px">Counts every stage not yet complete, using the agreed owner where one ' +
+      'has been set and the standard build’s role where it has not — which is why only roles appear until someone types a name. '  + 'Type a person into any cell of the grid below (Ben, for instance) and they appear here. A stage owned by two people counts for both.</p>' +
+      '</section>';
+
+    /* 5. the grid: courses down the side, stages across the top */
+    var filters = '<div class="filters">' +
+      '<input type="search" id="fq" placeholder="Search course, owner or notes…" value="' + esc(f.q) + '" aria-label="Search courses">' +
+      select('fpriority', 'All priorities', uniq(all.map(function (c) { return c.priority; })).map(function (p) { return { value: p, label: p }; }), f.priority) +
+      select('fperson', 'Anyone responsible', people.map(function (p) {
+        return { value: p.person, label: p.person + (roleName(p.person) ? ' — ' + roleName(p.person) : '') };
+      }), f.person) +
+      '<span class="result-count">' + list.length + ' of ' + all.length + ' courses</span></div>';
+
+    var headCells = stages.map(function (name, i) {
+      return '<th class="stage-col"><span class="stage-col-n">' + (i + 1) + '</span>' + esc(name) +
+        '<small>' + esc(m.roles[i] || '') + ' · ' + (m.days[i] || 0) + 'd</small></th>';
+    }).join('');
+
+    var gridRows = list.map(function (c) {
+      var plan = coursePlan(c), saved = stagePlanFor(c.name);
+      var cells = c.steps.map(function (st, i) {
+        var cell = stageCell(c, i, plan, saved, m);
+        return '<td class="grid-cell ' + st.key + (cell.overdue ? ' overdue' : '') + '"' +
+          ' data-tip="' + esc(c.name + ' — ' + (i + 1) + '. ' + st.name + ' — ' + (st.label || 'not started')) + '">' +
+          '<input type="date" class="stage-due" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
+          esc(cell.due ? isoDate(cell.due) : '') + '"' + (saved[i] && saved[i].due ? '' : ' data-suggested="1"') + '>' +
+          '<input type="text" class="stage-who" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
+          esc(cell.who) + '" placeholder="who"' + (saved[i] && saved[i].who ? '' : ' data-suggested="1"') + '>' +
+          '</td>';
+      }).join('');
+      return '<tr><th class="course-col">' + esc(c.name) +
+        '<small>' + esc(c.priority) + ' · ' + esc(c.target || 'no target') + (c.owner ? ' · ' + esc(c.owner) : '') + '</small>' +
+        '<button class="btn btn-sm" data-edit-course="' + esc(c.name) + '">' +
+        (state.filters.editingCourse === c.name ? 'Close' : 'Edit') + '</button></th>' + cells + '</tr>' +
+        courseEditor(c, stages.length + 1);
+    }).join('');
+
+    var gridCard = '<section class="card"><div class="card-head"><h2>Every course, every stage</h2>' +
+      '<span class="hint">date and person for each — grey is suggested, type to agree it</span></div>' +
+      (list.length
+        ? '<div class="table-wrap grid-scroll"><table class="stage-grid"><thead><tr><th class="course-col">Course</th>' +
+        headCells + '</tr></thead><tbody>' + gridRows + '</tbody></table></div>'
+        : '<p class="empty">No courses match those filters.</p>') +
+      '<div class="legend" style="margin-top:12px">' +
+      '<span><i style="background:var(--done-bg)"></i>Stage complete</span>' +
+      '<span><i style="background:var(--active-bg)"></i>In progress</span>' +
+      '<span><i style="background:#fff;border:1px solid var(--line)"></i>Not started</span>' +
+      '<span><i style="background:#FDECEC"></i>Past its date</span>' +
+      '</div></section>';
+
+    var footnotes = (state.data.courses.footnotes || []).map(function (n) {
+      return '<div class="banner info"><span aria-hidden="true">ℹ</span><div>' + esc(n) + '</div></div>';
+    }).join('');
+
+    return strip + '<div style="height:16px"></div>' +
+      ruleNote('<b>Build order:</b> ' + esc(PRIORITY_RULE_BUILD)) +
+      '<div class="grid two">' + highCard + overdueCard + '</div>' +
+      '<div style="height:16px"></div>' + peopleCard +
+      '<div style="height:16px"></div>' + slipLogCard() +
+      '<div style="height:16px"></div>' + filters + gridCard +
+      '<div style="height:16px"></div>' + staffingCard() +
+      '<div style="height:16px"></div>' + buildModelCard() +
+      '<div style="height:16px"></div>' + archiveCard('courses') +
+      (footnotes ? '<div style="margin-top:16px">' + footnotes + '</div>' : '');
+  };
+
+  views.projects = function () {
+    var all = projects().filter(function (p) { return p.name; });
+    var f = state.filters.projects = state.filters.projects || { q: '', status: '' };
+    var list = all.filter(function (p) {
+      if (f.status && p.status !== f.status) return false;
+      if (f.q && (p.name + ' ' + p.description + ' ' + p.notes + ' ' + p.nextStep).toLowerCase().indexOf(f.q.toLowerCase()) === -1) return false;
+      return true;
+    }).sort(function (a, b) {
+      var w = function (p) { return /progress/i.test(p.status) ? 0 : 1; };
+      return w(a) - w(b) || (a.targetSort || 999999) - (b.targetSort || 999999);
+    });
+
+    var filters = '<div class="filters">' +
+      '<input type="search" id="fq" placeholder="Search projects…" value="' + esc(f.q) + '" aria-label="Search projects">' +
+      select('fstatus', 'All statuses', uniq(all.map(function (p) { return p.status; })).map(function (s) { return { value: s, label: s }; }), f.status) +
+      '<span class="result-count">' + list.length + ' of ' + all.length + ' projects</span></div>';
+
+    var cards = list.map(function (p) {
+      var gaps = [];
+      if (!p.lead) gaps.push('No lead');
+      if (!p.nextStep) gaps.push('No next step');
+      if (!p.target) gaps.push('No target date');
+      var statusKind = /progress/i.test(p.status) ? 'active' : (/complete|live/i.test(p.status) ? 'done' : 'wait');
+      var statusGlyph = statusKind === 'active' ? '▶' : (statusKind === 'done' ? '✓' : '○');
+      return '<article class="item' + (gaps.length ? ' attention' : '') + '">' +
+        '<div class="item-head"><h3>' + esc(p.name) + '</h3>' + chip(statusKind, p.status, statusGlyph) + '</div>' +
+        (p.description ? '<p class="note">' + esc(p.description) + '</p>' : '') +
+        '<div class="item-meta">' +
+        '<span>Lead: <b>' + esc(p.lead || 'unassigned') + '</b></span>' +
+        (p.target ? '<span>Target: <b>' + esc(p.target) + '</b></span>' : '') +
+        '</div>' +
+        (p.nextStep ? '<p class="note"><b>Next step:</b> ' + esc(p.nextStep) + '</p>' : '') +
+        (p.notes ? '<p class="note">' + esc(p.notes) + '</p>' : '') +
+        (gaps.length || p.flags.length ? '<div class="chips">' + gaps.map(function (g) { return chip('wait', g); }).join('') + flagChips(p.flags) + '</div>' : '') +
+        '</article>';
+    }).join('');
+
+    return filters + (list.length ? '<div class="grid cards">' + cards + '</div>' : '<p class="empty">No projects match those filters.</p>');
+  };
+
+  /* Which stage is this item sitting at? Used to break the long card walls into
+     sections, so you can read a page by stage rather than scrolling everything. */
+  function stageBucket(steps, done, total) {
+    for (var i = 0; i < steps.length; i++) if (steps[i].key === 'active') return { order: i, index: i, live: true };
+    if (total && done === total) return { order: 900, index: null, complete: true };
+    if (steps.every(function (s) { return s.key === 'none'; })) return { order: -1, index: null, idle: true };
+    for (var j = 0; j < steps.length; j++) if (steps[j].key !== 'done') return { order: j, index: j, live: false };
+    return { order: 901, index: null };
   }
 
   function updateRow(u) {
@@ -1880,6 +2331,90 @@
       });
       dz.addEventListener('drop', function (e) { handleFiles(e.dataTransfer.files); });
     }
+
+    /* --- editing clients on the sales pipeline --- */
+    $$('[data-edit-deal]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var client = btn.getAttribute('data-edit-deal');
+        state.filters.editingDeal = state.filters.editingDeal === client ? null : client;
+        render();
+      });
+    });
+    $$('[data-close-editor]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () { state.filters.editingDeal = null; render(); });
+    });
+    $$('[data-archive-deal]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var client = btn.getAttribute('data-archive-deal');
+        if (!confirm('Archive ' + client + '? They disappear from the pipeline and every count, and can be restored from the archive at the bottom of this page.')) return;
+        setOvr('deals', client, { archived: true });
+        state.filters.editingDeal = null;
+        render();
+      });
+    });
+    $$('[data-restore-deal]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        clearOvrField('deals', btn.getAttribute('data-restore-deal'), 'archived');
+        render();
+      });
+    });
+    $$('[data-move-deal]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        moveDeal(btn.getAttribute('data-move-deal'), +btn.getAttribute('data-direction'));
+        render();
+      });
+    });
+    on('#resetOrder', 'click', function () {
+      var data = JSON.parse(JSON.stringify(state.data));
+      if (data.overrides) delete data.overrides.dealOrder;
+      savePreview(data);
+      render();
+    });
+
+    [['.ed-step', 'step'], ['.ed-priority', 'priority'], ['.ed-target', 'target'], ['.ed-notes', 'notes']].forEach(function (pair) {
+      $$(pair[0], main).forEach(function (el) {
+        el.addEventListener('change', function () {
+          var patch = {};
+          patch[pair[1]] = el.value;
+          setOvr('deals', el.getAttribute('data-client'), patch);
+          render();
+        });
+      });
+    });
+
+    /* --- editing courses --- */
+    $$('[data-edit-course]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var name = btn.getAttribute('data-edit-course');
+        state.filters.editingCourse = state.filters.editingCourse === name ? null : name;
+        render();
+      });
+    });
+    $$('[data-archive-course]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var name = btn.getAttribute('data-archive-course');
+        if (!confirm('Archive ' + name + '? It leaves the grid and every count, and can be restored from the archive at the bottom of this page.')) return;
+        setOvr('courses', name, { archived: true });
+        state.filters.editingCourse = null;
+        render();
+      });
+    });
+    $$('[data-restore-course]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        clearOvrField('courses', btn.getAttribute('data-restore-course'), 'archived');
+        render();
+      });
+    });
+    [['.ec-priority', 'priority'], ['.ec-target', 'target'], ['.ec-owner', 'owner'], ['.ec-notes', 'notes']].forEach(function (pair) {
+      $$(pair[0], main).forEach(function (el) {
+        el.addEventListener('change', function () {
+          var patch = {};
+          patch[pair[1]] = el.value;
+          setOvr('courses', el.getAttribute('data-course-name'), patch);
+          render();
+        });
+      });
+    });
 
     $$('.stage-due', main).forEach(function (input) {
       input.addEventListener('change', function () {

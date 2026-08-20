@@ -349,6 +349,7 @@
     emptyDataset: emptyDataset,
     applyWorkbook: applyWorkbook,
     parseTarget: parseTarget,
+    flagsFor: flagsFor,
     money: money,
     stepStatus: stepStatus
   };
