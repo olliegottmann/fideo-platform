@@ -494,3 +494,14 @@ details.archive-card[open] summary::before { transform: rotate(90deg); }
 .list-row.draggable:hover .grip { color: var(--brand); }
 .list-row.drop-above { box-shadow: inset 0 2px 0 var(--brand); }
 .list-row.drop-below { box-shadow: inset 0 -2px 0 var(--brand); }
+
+/* detail pages */
+.back-link {
+  display: inline-block; margin-bottom: 14px; font-size: 13px; font-weight: 500;
+  color: var(--ink-3); text-decoration: none;
+}
+.back-link:hover { color: var(--brand); }
+td.client-cell a, th.course-col a, .item-head h3 a { color: inherit; text-decoration: none; }
+td.client-cell a:hover, th.course-col a:hover, .item-head h3 a:hover { color: var(--brand); text-decoration: underline; }
+a.lr-title { text-decoration: none; color: var(--ink); }
+a.lr-title:hover { color: var(--brand); text-decoration: underline; }

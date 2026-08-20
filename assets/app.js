@@ -1149,7 +1149,7 @@
           (i === 0 ? ' disabled' : '') + '>▲</button>' +
           '<button class="mover" data-move-deal="' + esc(d.client) + '" data-direction="1" title="Move down"' +
           (i === shown.length - 1 ? ' disabled' : '') + '>▼</button></span>' +
-          '<div class="lr-main"><div class="lr-title">' + esc(d.client) + '</div>' +
+          '<div class="lr-main"><a class="lr-title" href="' + clientHref(d.client) + '">' + esc(d.client) + '</a>' +
           '<div class="lr-sub">' + esc(d.stageLabel || d.stage) + ' — ' +
           (d.revenue != null ? esc(money(d.revenue)) + ' a year' : 'no value recorded') + '</div>' +
           (mismatch || r.unvalued ? '<div class="chips" style="margin-top:5px">' +
@@ -1272,7 +1272,7 @@
         panel = '<div class="pstep-panel"><div class="card-head"><h3>' + esc(g2.step.id + '. ' + g2.step.name) + '</h3>' +
           '<span class="hint">' + esc(g2.step.detail) + '</span></div>' +
           (g2.deals.length ? '<div class="list">' + g2.deals.map(function (d) {
-            return '<div class="list-row"><div class="lr-main"><a class="lr-title" href="#/pipeline">' + esc(d.client) + '</a>' +
+            return '<div class="list-row"><div class="lr-main"><a class="lr-title" href="' + clientHref(d.client) + '">' + esc(d.client) + '</a>' +
               '<div class="lr-sub">' + esc(d.vertical) + '</div></div>' +
               '<div class="lr-side">' + priorityChip(d.priority) + '</div></div>';
           }).join('') + '</div>' : '<p class="empty">No clients at this step.</p>') + '</div>';
@@ -1320,7 +1320,7 @@
       panel = '<div class="pstep-panel"><div class="card-head"><h3>' + esc((+open + 1) + '. ' + stages[+open]) + '</h3>' +
         '<span class="hint">' + g.active.length + ' in progress · ' + g.waiting.length + ' waiting to start</span></div>' +
         (items.length ? '<div class="list">' + items.map(function (x) {
-          return '<div class="list-row"><div class="lr-main"><a class="lr-title" href="#/courses">' + esc(x.c.name) + '</a>' +
+          return '<div class="list-row"><div class="lr-main"><a class="lr-title" href="' + courseHref(x.c.name) + '">' + esc(x.c.name) + '</a>' +
             '<div class="lr-sub">' + esc(x.c.owner ? 'Owner: ' + x.c.owner : 'No owner named') + '</div></div>' +
             '<div class="lr-side">' + (x.live ? chip('active', 'In progress', '▶') : chip('wait', 'Waiting', '○')) +
             ' ' + targetChip(x.c.target, x.c.targetSort, x.c.provisional) + '</div></div>';
@@ -1344,7 +1344,7 @@
       '<a class="hint" href="#/pipeline">All ' + high.length + ' →</a></div>' +
       (ranked.length ? '<div class="list ranked">' + ranked.map(function (r, i) {
         return '<div class="list-row"><span class="rank">' + (i + 1) + '</span><div class="lr-main">' +
-          '<div class="lr-title">' + esc(r.deal.client) + '</div>' +
+          '<a class="lr-title" href="' + clientHref(r.deal.client) + '">' + esc(r.deal.client) + '</a>' +
           '<div class="lr-sub">' + esc(r.deal.stageLabel || r.deal.stage) + '</div></div>' +
           '<div class="lr-side">' + targetChip(r.deal.target, r.deal.targetSort) + '</div></div>';
       }).join('') + '</div>' : '<p class="empty">Nothing marked High.</p>') + '</section>';
@@ -1357,7 +1357,7 @@
       '<a class="hint" href="#/courses">All ' + high.length + ' →</a></div>' +
       (ranked.length ? '<div class="list ranked">' + ranked.map(function (r, i) {
         return '<div class="list-row"><span class="rank">' + (i + 1) + '</span><div class="lr-main">' +
-          '<div class="lr-title">' + esc(r.course.name) + '</div>' +
+          '<a class="lr-title" href="' + courseHref(r.course.name) + '">' + esc(r.course.name) + '</a>' +
           '<div class="lr-sub">' + esc(r.course.currentStage) + '</div></div>' +
           '<div class="lr-side">' + targetChip(r.course.target, r.course.targetSort, r.course.provisional) + '</div></div>';
       }).join('') + '</div>' : '<p class="empty">Nothing marked High.</p>') + '</section>';
@@ -1418,7 +1418,8 @@
           (a.targetSort || 999999) - (b.targetSort || 999999);
       }).map(function (d) {
         return '<tr>' +
-          '<td class="client-cell">' + esc(d.client) + (d.ref ? '<small>ref ' + esc(d.ref) + '</small>' : '') + '</td>' +
+          '<td class="client-cell"><a href="' + clientHref(d.client) + '">' + esc(d.client) + '</a>' +
+          (d.ref ? '<small>ref ' + esc(d.ref) + '</small>' : '') + '</td>' +
           '<td>' + esc(d.vertical) + '</td>' +
           '<td>' + priorityChip(d.priority) + '</td>' +
           '<td>' + targetChip(d.target, d.targetSort) + '</td>' +
@@ -1593,14 +1594,14 @@
       var courseBlock = cu.courses.length
         ? '<div class="cust-block"><h4>' + cu.courses.length + (cu.courses.length === 1 ? ' course being built' : ' courses being built') + '</h4>' +
         '<div class="list">' + cu.courses.map(function (c) {
-          return '<div class="list-row"><div class="lr-main"><a class="lr-title" href="#/courses">' + esc(c.name) + '</a>' +
+          return '<div class="list-row"><div class="lr-main"><a class="lr-title" href="' + courseHref(c.name) + '">' + esc(c.name) + '</a>' +
             '<div class="lr-sub">' + esc(c.currentStage) + ' · ' + c.stagesDone + '/' + c.stageCount + ' stages</div></div>' +
             '<div class="lr-side">' + targetChip(c.target, c.targetSort, c.provisional) + '</div></div>';
         }).join('') + '</div></div>'
         : '';
 
       return '<article class="item customer">' +
-        '<div class="item-head"><h3>' + esc(cu.name) + '</h3>' +
+        '<div class="item-head"><h3><a href="' + clientHref(cu.name) + '">' + esc(cu.name) + '</a></h3>' +
         '<div class="chips">' + chip(band.kind, band.label, band.glyph) + (d ? priorityChip(d.priority) : '') + '</div></div>' +
         dealBlock + planBlock + courseBlock +
         '</article>';
@@ -1778,7 +1779,7 @@
           '<button class="mover" data-move-course="' + esc(r.course.name) + '" data-direction="1" title="Move down"' +
           (i === Math.min(highs.length, 12) - 1 ? ' disabled' : '') + '>▼</button></span>' +
           '<div class="lr-main">' +
-          '<div class="lr-title">' + esc(r.course.name) + '</div>' +
+          '<a class="lr-title" href="' + courseHref(r.course.name) + '">' + esc(r.course.name) + '</a>' +
           '<div class="lr-sub">' + esc(r.course.currentStage) + '</div></div>' +
           '<div class="lr-side">' + chip(t.kind, t.label) + ' ' +
           targetChip(r.course.target, r.course.targetSort, r.course.provisional) + '</div></div>';
@@ -1794,7 +1795,7 @@
         ? '<div class="table-wrap"><table><thead><tr><th>Course</th><th>Stage</th><th>Was due</th>' +
         '<th>Days late</th><th>Responsible</th></tr></thead><tbody>' +
         overdue.slice(0, 20).map(function (x) {
-          return '<tr class="row-late"><td class="client-cell">' + esc(x.course.name) + '</td>' +
+          return '<tr class="row-late"><td class="client-cell"><a href="' + courseHref(x.course.name) + '">' + esc(x.course.name) + '</a></td>' +
             '<td>' + (x.index + 1) + '. ' + esc(x.stage.name) + '</td>' +
             '<td>' + esc(fmtDate(x.cell.due)) + '</td>' +
             '<td class="num">' + chip('risk', String(workingDaysBetween(x.cell.due, new Date())), '!') + '</td>' +
@@ -1844,7 +1845,7 @@
           esc(cell.who) + '" placeholder="who"' + (saved[i] && saved[i].who ? '' : ' data-suggested="1"') + '>' +
           '</td>';
       }).join('');
-      return '<tr><th class="course-col">' + esc(c.name) +
+      return '<tr><th class="course-col"><a href="' + courseHref(c.name) + '">' + esc(c.name) + '</a>' +
         '<small>' + esc(c.priority) + ' · ' + esc(c.target || 'no target') + (c.owner ? ' · ' + esc(c.owner) : '') + '</small>' +
         '<button class="btn btn-sm" data-edit-course="' + esc(c.name) + '">' +
         (state.filters.editingCourse === c.name ? 'Close' : 'Edit') + '</button></th>' + cells + '</tr>' +
@@ -1878,6 +1879,181 @@
       '<div style="height:16px"></div>' + buildModelCard() +
       '<div style="height:16px"></div>' + archiveCard('courses') +
       (footnotes ? '<div style="margin-top:16px">' + footnotes + '</div>' : '');
+  };
+
+  /* ---------- detail pages ----------
+     Click any client or course name and land here: everything held on it, all of
+     it editable, at a URL you can send to someone. Archived items still open, so
+     nothing becomes unreachable. */
+  function backLink(href, label) {
+    return '<a class="back-link" href="' + href + '">&larr; ' + esc(label) + '</a>';
+  }
+  function clientHref(name) { return '#/client/' + encodeURIComponent(name); }
+  function courseHref(name) { return '#/course/' + encodeURIComponent(name); }
+
+  views.client = function () {
+    var name = state.routeParam;
+    var d = allDeals().filter(function (x) { return x.client === name; })[0];
+    var plan = plans().filter(function (p) { return p.client === name; })[0];
+    var linked = courses().filter(function (c) { return (dealForCourse(c, deals()) || {}).client === name; });
+
+    if (!d && !plan) {
+      return backLink('#/pipeline', 'Back to the sales pipeline') +
+        '<p class="empty">No client called “' + esc(name || '') + '” on the pipeline or the stage plans.</p>';
+    }
+
+    var stepOptions = PROCESS.filter(function (p) { return !p.gate; }).map(function (p) {
+      return '<option value="' + p.id + '"' + (d && currentStepOf(d) === p.id ? ' selected' : '') + '>' +
+        esc(p.id + '. ' + p.name) + '</option>';
+    }).join('');
+
+    var editor = d
+      ? '<section class="card"><div class="card-head"><h2>Edit this client</h2>' +
+      '<span class="hint">saved as you change each field</span></div>' +
+      '<div class="editor">' +
+      '<div class="editor-grid">' +
+      '<label>Step on the process<select class="ed-step" data-client="' + esc(d.client) + '">' + stepOptions + '</select></label>' +
+      '<label>Priority<select class="ed-priority" data-client="' + esc(d.client) + '">' +
+      EDIT_PRIORITIES.map(function (p) {
+        return '<option' + (String(d.priority).toLowerCase() === p.toLowerCase() ? ' selected' : '') + '>' + p + '</option>';
+      }).join('') + '</select></label>' +
+      '<label>Target go-live<input type="text" class="ed-target" data-client="' + esc(d.client) + '" value="' +
+      esc(d.target || '') + '" placeholder="e.g. Q4 2026"></label>' +
+      '</div>' +
+      '<label class="editor-notes">Next action / notes<textarea class="ed-notes" data-client="' + esc(d.client) + '">' +
+      esc(d.notes || '') + '</textarea></label>' +
+      '<div class="editor-actions">' +
+      (d.archived
+        ? '<button class="btn primary" data-restore-deal="' + esc(d.client) + '">Restore from archive</button>'
+        : '<button class="btn" data-archive-deal="' + esc(d.client) + '">Archive this client</button>') +
+      (d.edited && d.edited.length ? '<span class="hint">Edited here: ' + esc(d.edited.join(', ')) +
+        (d.editedAt ? ' · ' + esc(dateLabel(d.editedAt)) : '') + '</span>' : '<span class="hint">Nothing changed here yet — all of it still comes from the spreadsheet.</span>') +
+      '</div></div></section>'
+      : '';
+
+    var facts = d
+      ? '<section class="card"><div class="card-head"><h2>Where this client is</h2></div>' +
+      '<div class="item-meta">' +
+      '<span>Process step: <b>' + esc((PROCESS.filter(function (p) { return p.id === currentStepOf(d); })[0] || {}).name || '—') + '</b></span>' +
+      '<span>Tracker stage: <b>' + esc(d.stageLabel || d.stage || '—') + '</b></span>' +
+      '<span>Vertical: <b>' + esc(d.vertical) + '</b></span>' +
+      '<span>Priority: <b>' + esc(d.priority) + '</b></span>' +
+      '<span>Target: <b>' + esc(d.target || 'not set') + '</b></span>' +
+      (d.ref ? '<span>Tracker ref: <b>' + esc(d.ref) + '</b></span>' : '') +
+      '</div>' +
+      (d.notes ? '<p class="note" style="margin-top:10px">' + esc(d.notes) + '</p>' : '') +
+      (d.flags && d.flags.length ? '<div class="chips" style="margin-top:10px">' + flagChips(d.flags) + '</div>' : '') +
+      '</section>'
+      : '';
+
+    var planCard = plan
+      ? '<section class="card"><div class="card-head"><h2>Milestones</h2>' +
+      '<span class="hint">from the Deal Stage Plans sheet</span></div>' +
+      stepStrip(plan.steps, true) + progressBar(plan.progress, plan.stepsDone + '/' + plan.stepCount + ' complete') +
+      (plan.notes ? '<p class="note">' + esc(plan.notes) + '</p>' : '') + '</section>'
+      : '';
+
+    var courseCard = linked.length
+      ? '<section class="card"><div class="card-head"><h2>Courses for this client</h2>' +
+      '<span class="hint">' + linked.length + ' matched to them</span></div>' +
+      '<div class="list">' + linked.map(function (c) {
+        return '<div class="list-row"><div class="lr-main">' +
+          '<a class="lr-title" href="' + courseHref(c.name) + '">' + esc(c.name) + '</a>' +
+          '<div class="lr-sub">' + esc(c.currentStage) + ' · ' + c.stagesDone + '/' + c.stageCount + ' stages</div></div>' +
+          '<div class="lr-side">' + targetChip(c.target, c.targetSort, c.provisional) + '</div></div>';
+      }).join('') + '</div></section>'
+      : '';
+
+    return backLink('#/pipeline', 'Back to the sales pipeline') +
+      (d && d.archived ? '<div class="banner"><span aria-hidden="true">⚠</span><div>This client is archived — hidden from every list and count until restored.</div></div>' : '') +
+      editor + '<div style="height:16px"></div>' +
+      '<div class="grid two">' + facts + planCard + '</div>' +
+      (courseCard ? '<div style="height:16px"></div>' + courseCard : '');
+  };
+
+  views.course = function () {
+    var name = state.routeParam;
+    var c = allCourses().filter(function (x) { return x.name === name; })[0];
+    if (!c) {
+      return backLink('#/courses', 'Back to course builds') +
+        '<p class="empty">No course called “' + esc(name || '') + '” on the build tracker.</p>';
+    }
+
+    var m = buildModel();
+    var plan = coursePlan(c);
+    var saved = stagePlanFor(c.name);
+    var tier = buildTier(c, liveDeals());
+    var tierMeta = BUILD_TIERS[tier.tier];
+    var linkedDeal = tier.deal;
+
+    var editor = '<section class="card"><div class="card-head"><h2>Edit this course</h2>' +
+      '<span class="hint">saved as you change each field</span></div>' +
+      '<div class="editor">' +
+      '<div class="editor-grid">' +
+      '<label>Priority<select class="ec-priority" data-course-name="' + esc(c.name) + '">' +
+      ['HIGH', 'MEDIUM', 'LOW', 'UNSET'].map(function (p) {
+        return '<option' + (String(c.priority).toUpperCase() === p ? ' selected' : '') + '>' + p + '</option>';
+      }).join('') + '</select></label>' +
+      '<label>Go-live target<input type="text" class="ec-target" data-course-name="' + esc(c.name) + '" value="' +
+      esc(c.target || '') + '" placeholder="e.g. End Oct 2026"></label>' +
+      '<label>Owner<input type="text" class="ec-owner" data-course-name="' + esc(c.name) + '" value="' +
+      esc(c.owner || '') + '" placeholder="e.g. AQ/OM"></label>' +
+      '</div>' +
+      '<label class="editor-notes">Notes / blockers<textarea class="ec-notes" data-course-name="' + esc(c.name) + '">' +
+      esc(c.notes || '') + '</textarea></label>' +
+      '<div class="editor-actions">' +
+      (c.archived
+        ? '<button class="btn primary" data-restore-course="' + esc(c.name) + '">Restore from archive</button>'
+        : '<button class="btn" data-archive-course="' + esc(c.name) + '">Archive this course</button>') +
+      (c.edited && c.edited.length ? '<span class="hint">Edited here: ' + esc(c.edited.join(', ')) +
+        (c.editedAt ? ' · ' + esc(dateLabel(c.editedAt)) : '') + '</span>' : '<span class="hint">Nothing changed here yet — all of it still comes from the spreadsheet.</span>') +
+      '</div></div></section>';
+
+    var stageRows = c.steps.map(function (st, i) {
+      var cell = stageCell(c, i, plan, saved, m);
+      return '<tr' + (cell.overdue ? ' class="row-late"' : '') + '>' +
+        '<td class="num">' + (i + 1) + '</td><td>' + esc(st.name) + '</td>' +
+        '<td>' + (st.key === 'done' ? chip('done', 'Complete', '✓')
+          : st.key === 'active' ? chip('active', 'In progress', '▶')
+            : chip('wait', st.label || 'Not started', '○')) + '</td>' +
+        '<td><input type="date" class="stage-due" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
+        esc(cell.due ? isoDate(cell.due) : '') + '"' + (saved[i] && saved[i].due ? '' : ' data-suggested="1"') + '></td>' +
+        '<td><input type="text" class="stage-who" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
+        esc(cell.who) + '" placeholder="who"' + (saved[i] && saved[i].who ? '' : ' data-suggested="1"') + '></td>' +
+        '<td class="num">' + (m.days[i] || 0) + 'd</td>' +
+        '<td>' + (cell.overdue ? chip('risk', 'Overdue', '!') : (cell.agreed ? chip('done', 'Agreed', '✓') : chip('ghost', 'Suggested'))) + '</td>' +
+        '</tr>';
+    }).join('');
+
+    var stagesCard = '<section class="card"><div class="card-head"><h2>The ten stages</h2>' +
+      '<span class="hint">grey values are suggestions from the standard build — type to agree them</span></div>' +
+      '<div class="table-wrap"><table><thead><tr><th>#</th><th>Stage</th><th>Status</th>' +
+      '<th>Date</th><th>Responsible</th><th>Days</th><th></th></tr></thead><tbody>' + stageRows + '</tbody></table></div>' +
+      '</section>';
+
+    var verdict = plan.target
+      ? (plan.shortfall > 0
+        ? chip('risk', plan.remainingDays + ' days of build left, ' + plan.available + ' working days to the target — short by ' + plan.shortfall, '!')
+        : chip('done', plan.remainingDays + ' days of build left, ' + plan.available + ' working days available', '✓'))
+      : chip('wait', 'No go-live target set');
+
+    var facts = '<section class="card"><div class="card-head"><h2>Where this build is</h2></div>' +
+      '<div class="chips" style="margin-bottom:10px">' + chip(tierMeta.kind, tierMeta.glyph + '. ' + tierMeta.label) +
+      priorityChip(c.priority) + targetChip(c.target, c.targetSort, c.provisional) + '</div>' +
+      '<p class="note">' + esc(tier.why) + '</p>' +
+      (linkedDeal ? '<p class="note">Client: <a href="' + clientHref(linkedDeal.client) + '">' + esc(linkedDeal.client) + '</a></p>' : '') +
+      progressBar(c.progress, c.stagesDone + '/' + c.stageCount + ' stages complete') +
+      '<div class="chips" style="margin-top:10px">' + verdict + '</div>' +
+      (plan.startBy ? '<p class="hint" style="margin-top:8px">To hold the target, the remaining work has to start by ' +
+        esc(fmtDate(plan.startBy)) + '.</p>' : '') +
+      (c.notes ? '<p class="note" style="margin-top:10px">' + esc(c.notes) + '</p>' : '') +
+      (c.flags && c.flags.length ? '<div class="chips" style="margin-top:8px">' + flagChips(c.flags) + '</div>' : '') +
+      '</section>';
+
+    return backLink('#/courses', 'Back to course builds') +
+      (c.archived ? '<div class="banner"><span aria-hidden="true">⚠</span><div>This course is archived — hidden from every list and count until restored.</div></div>' : '') +
+      '<div class="grid two">' + facts + editor + '</div>' +
+      '<div style="height:16px"></div>' + stagesCard;
   };
 
   views.projects = function () {
@@ -2311,14 +2487,22 @@
     courses: ['Course builds', 'Where every programme is in the ten-stage build'],
     projects: ['Projects', 'Pre-pipeline opportunities and who owns them'],
     updates: ['Updates', 'What has changed lately'],
+    client: ['Client', 'Everything we hold on this client'],
+    course: ['Course build', 'Everything we hold on this course'],
     key: ['Key', 'What every symbol, initial and worked-out label on this platform means'],
     'import': ['Update data', 'Upload a tracker and publish the new numbers']
   };
 
   function renderChrome() {
     var t = TITLES[state.route] || TITLES.overview;
-    $('#pageTitle').textContent = t[0];
-    $('#pageSub').textContent = t[1];
+    if (state.route === 'client' || state.route === 'course') {
+      $('#pageTitle').textContent = state.routeParam || t[0];
+      $('#pageSub').textContent = state.route === 'client' ? 'Client — everything we hold, all of it editable'
+        : 'Course build — everything we hold, all of it editable';
+    } else {
+      $('#pageTitle').textContent = t[0];
+      $('#pageSub').textContent = t[1];
+    }
     $$('.nav a').forEach(function (a) {
       a.classList.toggle('active', a.getAttribute('data-route') === state.route);
     });
@@ -2344,9 +2528,12 @@
   }
 
   function loadRoute() {
-    var hash = (location.hash || '#/overview').replace('#/', '');
-    if (hash === 'deals') hash = 'customers';
-    state.route = views[hash] ? hash : 'overview';
+    var raw = (location.hash || '#/overview').replace(/^#\//, '');
+    var parts = raw.split('/');
+    var head = parts[0];
+    if (head === 'deals') head = 'customers';
+    state.routeParam = parts.length > 1 ? decodeURIComponent(parts.slice(1).join('/')) : null;
+    state.route = views[head] ? head : 'overview';
   }
 
   function bind() {
