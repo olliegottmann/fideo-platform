@@ -226,9 +226,9 @@
      something out of the computed order, at which point every client gets an
      explicit position so later moves are stable. */
   function dealOrder() { return (state.data.overrides && state.data.overrides.dealOrder) || {}; }
+  function isHigh(x) { return String(x && x.priority).toUpperCase() === 'HIGH'; }
   function rankedClientNames() {
-    return salesRanking(deals().filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; }))
-      .map(function (r) { return r.deal.client; });
+    return salesRanking(deals().filter(isHigh)).map(function (r) { return r.deal.client; });
   }
   function persistOrder(names) {
     var data = JSON.parse(JSON.stringify(state.data));
@@ -1087,11 +1087,17 @@
   var views = {};
 
   function salesPriorityCard(list, limit) {
-    var ranked = salesRanking(list);
+    var high = list.filter(isHigh);
+    var ranked = salesRanking(high);
     var shown = limit ? ranked.slice(0, limit) : ranked;
-    if (!shown.length) return '';
+    if (!shown.length) {
+      return '<section class="card"><div class="card-head"><h2>Sales priority order</h2>' +
+        '<span class="hint">High-rated clients only</span></div>' +
+        '<p class="empty">No client is rated High. Rate one High from its Edit panel and it appears here.</p></section>';
+    }
     return '<section class="card"><div class="card-head"><h2>Sales priority order</h2>' +
-      '<span class="hint">' + (limit ? 'top ' + limit + ' of ' + ranked.length : ranked.length + ' live deals') + '</span></div>' +
+      '<span class="hint">High-rated clients only · ' +
+      (limit && ranked.length > limit ? 'top ' + limit + ' of ' + ranked.length : ranked.length + ' of them') + '</span></div>' +
       ruleNote(esc(PRIORITY_RULE_SALES) + (Object.keys(dealOrder()).length ? ' <b>This list has been reordered by hand</b> — the rule no longer decides it. <button class="btn btn-sm" id="resetOrder">Back to the rule</button>' : '')) +
       '<div class="list ranked">' + shown.map(function (r, i) {
         var d = r.deal;
@@ -1116,11 +1122,11 @@
   }
 
   function buildPriorityCard(limit) {
-    var ranked = buildRanking(courses().filter(function (c) { return c.name && c.progress < 100; }), liveDeals());
+    var ranked = buildRanking(courses().filter(function (c) { return c.name && c.progress < 100 && isHigh(c); }), liveDeals());
     var shown = limit ? ranked.slice(0, limit) : ranked;
     if (!shown.length) return '';
     return '<section class="card"><div class="card-head"><h2>Build priority order</h2>' +
-      '<span class="hint">' + (limit ? 'top ' + limit + ' of ' + ranked.length : ranked.length + ' in flight') + '</span></div>' +
+      '<span class="hint">High-rated courses only · ' + (limit && ranked.length > limit ? 'top ' + limit + ' of ' + ranked.length : ranked.length + ' of them') + '</span></div>' +
       ruleNote(esc(PRIORITY_RULE_BUILD)) +
       '<div class="list ranked">' + shown.map(function (r, i) {
         var t = BUILD_TIERS[r.tier];
@@ -1418,7 +1424,7 @@
 
     return banner + salesStepsCard(all.filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; })) +
       '<div style="height:16px"></div>' +
-      salesPriorityCard(list.filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; }), 8) +
+      salesPriorityCard(list, 8) +
       '<div style="height:18px"></div>' + filters +
       (list.length ? sections + leftovers : '<p class="empty">No deals match those filters.</p>') +
       '<div style="height:16px"></div>' + archiveCard('deals');
@@ -1717,7 +1723,7 @@
     /* 2. high priority builds */
     var highs = buildRanking(all.filter(function (c) { return c.priority === 'HIGH' && c.progress < 100; }), liveDeals());
     var highCard = '<section class="card"><div class="card-head"><h2>High priority builds</h2>' +
-      '<span class="hint">' + highs.length + ' courses, in build-priority order</span></div>' +
+      '<span class="hint">High-rated courses only · ' + highs.length + ' of them, in build-priority order</span></div>' +
       (highs.length ? '<div class="list ranked">' + highs.slice(0, 10).map(function (r, i) {
         var t = BUILD_TIERS[r.tier];
         return '<div class="list-row"><span class="rank">' + (i + 1) + '</span><div class="lr-main">' +
