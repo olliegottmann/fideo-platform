@@ -50,6 +50,33 @@ for (const file of files) {
   console.log(`- ${path.basename(file)}: ${res.applied.join(', ')}`);
 }
 
+const day = stamp.slice(0, 10);
+data.history = data.history || { slips: [] };
+const moved = [];
+((data.courses && data.courses.items) || []).forEach((c) => {
+  if (!c.name || !(c.name in targetsBefore)) return;
+  const was = targetsBefore[c.name];
+  const now = c.target || '';
+  if (was === now) return;
+  moved.push({
+    date: day,
+    course: c.name,
+    from: was || 'none',
+    to: now || 'none',
+    owner: c.owner || '',
+    reason: '',
+    agreedBy: '',
+    source: 'command-line import'
+  });
+});
+data.history.slips = data.history.slips.concat(moved);
+if (moved.length) {
+  console.log(`
+${moved.length} go-live date(s) moved and were logged with no reason given:`);
+  moved.forEach((m) => console.log(`  - ${m.course}: ${m.from} -> ${m.to}`));
+  console.log('  Add the reasons on the Course builds page, or import through the browser next time to be asked.');
+}
+
 const banner = `/* Fideo Global dashboard data — generated ${stamp}\n` +
   `   Regenerate by uploading a tracker on the "Update data" tab, or run: node tools/seed.js */\n`;
 fs.writeFileSync(outPath, banner + 'window.FIDEO_DATA = ' + JSON.stringify(data, null, 2) + ';\n', 'utf8');

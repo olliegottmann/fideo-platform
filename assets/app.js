@@ -1723,11 +1723,17 @@
     var unexplained = all.filter(function (x) { return !x.reason; }).length;
     return '<section class="card"><div class="card-head"><h2>Dates that have moved</h2>' +
       '<span class="hint">' + all.length + ' changes · ' + unexplained + ' with no reason given</span></div>' +
+      (unexplained ? ruleNote('A date cannot move quietly: uploads ask why before applying a change. Rows below marked <b>no reason given</b> came in without one — through the command line, or because nobody filled the box in.') : '') +
       '<div class="table-wrap"><table><thead><tr><th>Recorded</th><th>Course</th><th>From</th><th>To</th>' +
       '<th>Reason given</th><th>Agreed with</th></tr></thead><tbody>' +
       all.slice(0, 15).map(function (x) {
-        return '<tr><td>' + esc(dateLabel(x.date)) + '</td><td class="client-cell">' + esc(x.course) + '</td>' +
-          '<td>' + esc(x.from) + '</td><td>' + esc(x.to) + '</td>' +
+        var erased = /^(tbc|none|under review|\s*)$/i.test(String(x.to).trim());
+        return '<tr><td>' + esc(dateLabel(x.date)) + '</td><td class="client-cell">' +
+          '<a href="' + courseHref(x.course) + '">' + esc(x.course) + '</a>' +
+          (x.source ? '<small>' + esc(x.source) + '</small>' : '') + '</td>' +
+          '<td>' + esc(x.from) + '</td>' +
+          '<td>' + esc(x.to) + (erased && x.from && x.from !== 'none'
+            ? ' ' + chip('risk', 'date removed', '!') : '') + '</td>' +
           '<td class="note">' + (x.reason ? esc(x.reason) : chip('risk', 'No reason given', '!')) + '</td>' +
           '<td>' + esc(x.agreedBy || '—') + '</td></tr>';
       }).join('') + '</tbody></table></div></section>';

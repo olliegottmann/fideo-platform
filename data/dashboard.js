@@ -3083,5 +3083,39 @@ window.FIDEO_DATA = {
       "tag": "Ops",
       "body": "This dashboard now carries the Course Build Tracker (builds + project register, as at 25 Jul 2026) and the Sales Pipeline Tracker (deals + deal stage plans, as at May 2026).\n\nOne thing to fix at source: the deal rows add up to EUR 641,750 of quantified revenue, but the Funnel Summary sheet states EUR 1,360,000. The gap is deals whose value only exists in the summary sheet or in the notes column (AML Intelligence, W3GRC, Bespoke Training). Put those figures in the Annual Rev column and the two will agree.\n\nTo refresh everything: Update data > drop the new spreadsheet in > Apply > download the data file > commit it."
     }
-  ]
+  ],
+  "history": {
+    "slips": [
+      {
+        "date": "2026-08-18",
+        "course": "Analytics Institute - Shorts",
+        "from": "none",
+        "to": "#1 Released",
+        "owner": "AQ",
+        "reason": "",
+        "agreedBy": "",
+        "source": "found later, by comparing the 25 Jul and 13 Aug trackers"
+      },
+      {
+        "date": "2026-08-18",
+        "course": "CU - STR",
+        "from": "End Jul 2026",
+        "to": "TBC",
+        "owner": "AQ/OM",
+        "reason": "",
+        "agreedBy": "",
+        "source": "found later, by comparing the 25 Jul and 13 Aug trackers"
+      },
+      {
+        "date": "2026-08-18",
+        "course": "Gambling Compliance",
+        "from": "End Jul 2026",
+        "to": "TBC",
+        "owner": "AQ",
+        "reason": "",
+        "agreedBy": "",
+        "source": "found later, by comparing the 25 Jul and 13 Aug trackers"
+      }
+    ]
+  }
 };
