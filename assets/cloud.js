@@ -111,6 +111,33 @@
       });
   }
 
+  /* Managing who may edit. The database decides whether these are allowed;
+     the page only offers them to people it believes are editors. */
+  function listEditors() {
+    var c = sb();
+    if (!c) return Promise.resolve([]);
+    return c.from(CONFIG.editors).select('email, note, protected, added_at').order('added_at')
+      .then(function (res) { return (res && res.data) || []; }, function () { return []; });
+  }
+  function addEditor(email, note) {
+    var c = sb();
+    if (!c) return Promise.resolve({ ok: false, message: 'Not connected.' });
+    return c.from(CONFIG.editors).insert({ email: String(email).trim().toLowerCase(), note: note || null })
+      .then(function (res) {
+        if (res.error) return { ok: false, message: res.error.message };
+        return { ok: true };
+      });
+  }
+  function removeEditor(email) {
+    var c = sb();
+    if (!c) return Promise.resolve({ ok: false, message: 'Not connected.' });
+    return c.from(CONFIG.editors).delete().eq('email', String(email).toLowerCase())
+      .then(function (res) {
+        if (res.error) return { ok: false, message: res.error.message };
+        return { ok: true };
+      });
+  }
+
   function signIn(email, password) {
     var c = sb();
     if (!c) return Promise.resolve({ ok: false, message: 'The database library did not load.' });
@@ -150,6 +177,9 @@
     signIn: signIn,
     signUp: signUp,
     signOut: signOut,
+    listEditors: listEditors,
+    addEditor: addEditor,
+    removeEditor: removeEditor,
     refreshPermission: refreshPermission
   };
 })(typeof self !== 'undefined' ? self : this);

@@ -2264,6 +2264,82 @@
       '<div style="height:16px"></div>' + stagesCard;
   };
 
+  /* ---------- who can do what ----------
+     Reading is open to anyone with the link. Editing is limited to the people on
+     the editors list, which editors manage here rather than in SQL. */
+  views.access = function () {
+    var c = cloud();
+    var s = c ? c.state : null;
+
+    var explain = '<section class="card"><div class="card-head"><h2>How access works</h2></div>' +
+      '<div class="table-wrap"><table><tbody>' +
+      '<tr><td><b>Anyone with the link</b></td><td class="note">Sees every page. No account, no sign-in. ' +
+      'Cannot change anything — the database refuses writes from anyone not signed in.</td></tr>' +
+      '<tr><td><b>Signed in</b></td><td class="note">Anyone can create an account, which on its own changes nothing. ' +
+      'They stay read-only until their address is on the editors list.</td></tr>' +
+      '<tr><td><b>On the editors list</b></td><td class="note">Can change anything on the platform, and their edits ' +
+      'become what everyone else sees. Can also add and remove other editors here.</td></tr>' +
+      '</tbody></table></div>' +
+      '<p class="hint" style="margin-top:10px">The rules are enforced by the database, not by this page, so they ' +
+      'hold however someone reaches the data.</p></section>';
+
+    if (!s || !s.ready) {
+      return explain + '<div style="height:16px"></div><p class="empty">Connecting to the database…</p>';
+    }
+    if (!s.online) {
+      return explain + '<div style="height:16px"></div>' +
+        '<div class="banner"><span aria-hidden="true">⚠</span><div>Not connected to the database, so the editors ' +
+        'list cannot be shown or changed right now.</div></div>';
+    }
+    if (!s.user) {
+      return explain + '<div style="height:16px"></div>' +
+        '<section class="card"><div class="card-head"><h2>Editors</h2></div>' +
+        '<p class="empty">Sign in to see who can edit. <button class="btn primary" id="openSignIn">Sign in</button></p>' +
+        '</section>';
+    }
+
+    var rows = (state.editors || []).map(function (e) {
+      var isYou = String(e.email).toLowerCase() === String(s.user.email).toLowerCase();
+      return '<tr><td class="client-cell">' + esc(e.email) +
+        (isYou ? ' ' + chip('brand', 'you') : '') + '</td>' +
+        '<td class="note">' + esc(e.note || '—') + '</td>' +
+        '<td>' + esc(e.added_at ? dateLabel(e.added_at) : '—') + '</td>' +
+        '<td>' + (e.protected
+          ? chip('ghost', 'Protected')
+          : (s.canEdit
+            ? '<button class="btn btn-sm" data-remove-editor="' + esc(e.email) + '">Remove</button>'
+            : '')) + '</td></tr>';
+    }).join('');
+
+    var list = '<section class="card"><div class="card-head"><h2>Editors</h2>' +
+      '<span class="hint">' + (state.editors ? state.editors.length : 0) + ' with permission to change the platform</span></div>' +
+      (state.editors && state.editors.length
+        ? '<div class="table-wrap"><table><thead><tr><th>Email</th><th>Who they are</th><th>Added</th><th></th></tr></thead>' +
+        '<tbody>' + rows + '</tbody></table></div>'
+        : '<p class="empty">Nobody on the list yet.</p>') +
+      (state.accessMessage ? '<p class="hint" style="margin-top:10px">' + esc(state.accessMessage) + '</p>' : '') +
+      '<p class="hint" style="margin-top:10px">A protected entry cannot be removed here, so the list can never be ' +
+      'emptied by accident and lock everyone out.</p>' +
+      '</section>';
+
+    var addBox = s.canEdit
+      ? '<section class="card"><div class="card-head"><h2>Give someone editing rights</h2>' +
+      '<span class="hint">they also need to create an account with this address</span></div>' +
+      '<div class="filters" style="margin-bottom:0">' +
+      '<input type="email" id="newEditorEmail" placeholder="name@fideo-global.com" style="min-width:250px">' +
+      '<input type="text" id="newEditorNote" placeholder="who they are, e.g. Andrew — course builds" style="min-width:250px">' +
+      '<button class="btn primary" id="addEditor">Add editor</button>' +
+      '</div>' +
+      '<p class="hint" style="margin-top:10px">Adding an address here does not create the account. They sign up ' +
+      'themselves from the top of any page; once their address is on this list, their next sign-in can edit.</p>' +
+      '</section>'
+      : '<section class="card"><div class="card-head"><h2>You are read-only</h2></div>' +
+      '<p class="note">You are signed in as ' + esc(s.user.email) + ' but not on the editors list, so you can see ' +
+      'everything and change nothing. Ask one of the editors above to add you.</p></section>';
+
+    return explain + '<div style="height:16px"></div>' + list + '<div style="height:16px"></div>' + addBox;
+  };
+
   views.projects = function () {
     var all = projects().filter(function (p) { return p.name; });
     var f = state.filters.projects = state.filters.projects || { q: '', status: '' };
@@ -2718,6 +2794,7 @@
     updates: ['Updates', 'What has changed lately'],
     client: ['Client', 'Everything we hold on this client'],
     course: ['Course build', 'Everything we hold on this course'],
+    access: ['Access', 'Who can see this, and who can change it'],
     key: ['Key', 'What every symbol, initial and worked-out label on this platform means'],
     'import': ['Update data', 'Upload a tracker and publish the new numbers']
   };
@@ -2750,6 +2827,14 @@
   function render() {
     loadRoute();
     renderChrome();
+    if (state.route === 'access' && cloud() && cloud().state.user && !state.editorsLoading && !state.editors) {
+      state.editorsLoading = true;
+      cloud().listEditors().then(function (list) {
+        state.editors = list;
+        state.editorsLoading = false;
+        render();
+      });
+    }
     var view = views[state.route] || views.overview;
     var main = $('#main');
     main.innerHTML = cloudBanner() + signInDialog() + unpublishedBanner() + view();
@@ -2886,6 +2971,33 @@
       try { localStorage.removeItem(PREVIEW_KEY); } catch (err) { /* ignore */ }
       state.pendingLocal = null;
       render();
+    });
+    on('#addEditor', 'click', function () {
+      var email = $('#newEditorEmail').value.trim();
+      var note = $('#newEditorNote').value.trim();
+      if (!email || email.indexOf('@') === -1) { state.accessMessage = 'Enter a valid email address.'; render(); return; }
+      state.accessMessage = 'Adding…'; render();
+      cloud().addEditor(email, note).then(function (res) {
+        state.accessMessage = res.ok ? email + ' can now edit, once they sign in.' : res.message;
+        state.editors = null;
+        render();
+      });
+    });
+    $$('[data-remove-editor]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var email = btn.getAttribute('data-remove-editor');
+        var you = cloud().state.user && cloud().state.user.email;
+        var warn = String(email).toLowerCase() === String(you).toLowerCase()
+          ? 'Remove your own editing rights? You will be read-only until another editor adds you back.'
+          : 'Remove editing rights from ' + email + '? They keep read access like everyone else.';
+        if (!confirm(warn)) return;
+        cloud().removeEditor(email).then(function (res) {
+          state.accessMessage = res.ok ? email + ' is now read-only.' : res.message;
+          state.editors = null;
+          if (res.ok) cloud().refreshPermission();
+          render();
+        });
+      });
     });
     on('#openSignIn', 'click', function () { state.showSignIn = true; state.signInMessage = null; render(); });
     on('#cancelSignIn', 'click', function () { state.showSignIn = false; render(); });
