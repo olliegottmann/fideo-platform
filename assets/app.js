@@ -195,7 +195,8 @@
     if (!s.user) {
       return '<button class="btn" id="openSignIn">Sign in to edit</button>';
     }
-    return '<span class="chip ' + (s.canEdit ? 'done' : 'wait') + '">' +
+    return '<span class="chip ' + (s.canEdit ? 'done' : 'risk') + '" data-tip="' +
+      esc(s.canEdit ? 'On the editors list' : 'Signed in, but not on the editors list — see the Access page') + '">' +
       esc(s.user.email) + (s.canEdit ? ' · can edit' : ' · read only') + '</span>' +
       '<button class="btn btn-sm" id="signOut">Sign out</button>';
   }
@@ -3035,8 +3036,10 @@
       cloud().signUp(email, pass).then(function (res) {
         state.signInMessage = res.ok
           ? (res.needsConfirmation
-            ? 'Account created. Check ' + email + ' for the confirmation link, then sign in.'
-            : 'Account created. Signing in…')
+            ? 'You are not signed in yet. If this address is new, check ' + email +
+              ' for the confirmation link. If it already has an account, use Sign in instead — ' +
+              'creating an account again does not sign you in.'
+            : 'Signed in.')
           : res.message;
         render();
       });

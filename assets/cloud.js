@@ -41,13 +41,32 @@
      and the database enforces it regardless of what the page believes. */
   function refreshPermission() {
     var c = sb();
-    if (!c || !state.user) { state.canEdit = false; return Promise.resolve(false); }
-    return c.from(CONFIG.editors).select('email').then(function (res) {
-      var rows = (res && res.data) || [];
-      var email = String(state.user.email || '').toLowerCase();
-      state.canEdit = rows.some(function (r) { return String(r.email).toLowerCase() === email; });
-      return state.canEdit;
-    }, function () { state.canEdit = false; return false; });
+    if (!c) { state.canEdit = false; return Promise.resolve(false); }
+    /* Ask for the session rather than trusting what the page thinks: without one
+       every request goes out anonymous, and the editors list comes back empty,
+       which looks identical to "not an editor" and is not. */
+    return c.auth.getSession().then(function (s) {
+      var session = s && s.data && s.data.session;
+      if (!session) {
+        state.user = null;
+        state.canEdit = false;
+        state.sessionMissing = true;
+        return false;
+      }
+      state.user = session.user;
+      state.sessionMissing = false;
+      return c.from(CONFIG.editors).select('email').then(function (res) {
+        var rows = (res && res.data) || [];
+        var email = String(state.user.email || '').toLowerCase();
+        state.canEdit = rows.some(function (r) { return String(r.email).toLowerCase() === email; });
+        state.permissionError = res && res.error ? res.error.message : null;
+        return state.canEdit;
+      }, function (err) {
+        state.canEdit = false;
+        state.permissionError = (err && err.message) || 'Could not read the editors list.';
+        return false;
+      });
+    });
   }
 
   function load() {
@@ -155,8 +174,15 @@
     if (!c) return Promise.resolve({ ok: false, message: 'The database library did not load.' });
     return c.auth.signUp({ email: email, password: password }).then(function (res) {
       if (res.error) return { ok: false, message: res.error.message };
-      state.user = res.data.user;
-      return { ok: true, needsConfirmation: !res.data.session, email: email };
+      var session = res.data && res.data.session;
+      if (session) {
+        state.user = res.data.user;
+        return refreshPermission().then(function () { return { ok: true, needsConfirmation: false, email: email }; });
+      }
+      /* No session: either the confirmation email is pending, or the address is
+         already registered — Supabase deliberately does not say which. Either
+         way this is not a signed-in state. */
+      return { ok: true, needsConfirmation: true, email: email };
     });
   }
 
