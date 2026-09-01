@@ -202,20 +202,79 @@
   function deals() { return allDeals().filter(function (d) { return !d.archived; }); }
   function archivedDeals() { return allDeals().filter(function (d) { return d.archived; }); }
 
+  /* The four states a build stage can be in, and how each one reads. */
+  var STAGE_STATUSES = [
+    { value: 'done', label: 'Complete', glyph: '✓' },
+    { value: 'active', label: 'In progress', glyph: '▶' },
+    { value: 'pending', label: 'To be confirmed', glyph: '○' },
+    { value: 'none', label: 'Not started', glyph: '·' }
+  ];
+  function statusLabel(key) {
+    var s = STAGE_STATUSES.filter(function (x) { return x.value === key; })[0];
+    return s ? s.label : '';
+  }
+
+  /* Recalculate everything that hangs off the ten stage statuses, using the same
+     rules the spreadsheet parser uses, so a stage ticked complete here counts
+     exactly as one ticked complete in the tracker. */
+  function recomputeStages(out) {
+    var done = 0, active = 0;
+    out.steps.forEach(function (s) {
+      if (s.key === 'done') done++;
+      if (s.key === 'active') active++;
+    });
+    out.stagesDone = done;
+    out.stagesActive = active;
+    out.stageCount = out.steps.length;
+    out.progress = out.steps.length ? Math.round((done / out.steps.length) * 100) : 0;
+
+    var current = null, i;
+    for (i = 0; i < out.steps.length; i++) {
+      if (out.steps[i].key === 'active') { current = 'In progress: ' + out.steps[i].name; break; }
+    }
+    if (!current && done > 0 && done === out.steps.length) current = 'All stages complete';
+    if (!current && out.steps.every(function (s) { return s.key === 'none'; })) current = 'Not started';
+    if (!current) {
+      for (i = 0; i < out.steps.length; i++) {
+        if (out.steps[i].key !== 'done') { current = 'Next up: ' + out.steps[i].name; break; }
+      }
+    }
+    out.currentStage = current || 'Not started';
+    return out;
+  }
+
   function allCourses() {
     var raw = (state.data.courses && state.data.courses.items) || [];
     var edits = ovr('courses');
+    var stagePlans = state.data.stagePlans || {};
     return raw.map(function (c) {
       var e = edits[c.name];
-      if (!e) return c;
+      var sp = stagePlans[c.name];
+      var statusEdits = [];
+      if (sp) {
+        Object.keys(sp).forEach(function (k) { if (sp[k] && sp[k].status) statusEdits.push(k); });
+      }
+      if (!e && !statusEdits.length) return c;
+
       var out = copyOf(c);
       out.edited = [];
-      if (e.priority) { out.priority = e.priority; out.edited.push('priority'); }
-      if (e.notes != null) { out.notes = e.notes; out.flags = reFlag(e.notes, c.flags); out.edited.push('notes'); }
-      if (e.owner != null) { out.owner = e.owner; out.edited.push('owner'); }
-      if (e.target != null) { applyTarget(out, e.target); out.edited.push('target'); }
-      if (e.archived) out.archived = true;
-      out.editedAt = e.editedAt;
+      if (e) {
+        if (e.priority) { out.priority = e.priority; out.edited.push('priority'); }
+        if (e.notes != null) { out.notes = e.notes; out.flags = reFlag(e.notes, c.flags); out.edited.push('notes'); }
+        if (e.owner != null) { out.owner = e.owner; out.edited.push('owner'); }
+        if (e.target != null) { applyTarget(out, e.target); out.edited.push('target'); }
+        if (e.archived) out.archived = true;
+        out.editedAt = e.editedAt;
+      }
+      if (statusEdits.length) {
+        out.steps = c.steps.map(function (st, i) {
+          var o = sp[i];
+          if (!o || !o.status) return st;
+          return { name: st.name, key: o.status, label: statusLabel(o.status), fromPlatform: true };
+        });
+        recomputeStages(out);
+        out.edited.push(statusEdits.length + (statusEdits.length === 1 ? ' stage status' : ' stage statuses'));
+      }
       return out;
     });
   }
@@ -1849,6 +1908,7 @@
           esc(cell.due ? isoDate(cell.due) : '') + '"' + (saved[i] && saved[i].due ? '' : ' data-suggested="1"') + '>' +
           '<input type="text" class="stage-who" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
           esc(cell.who) + '" placeholder="who"' + (saved[i] && saved[i].who ? '' : ' data-suggested="1"') + '>' +
+          statusPicker(c.name, i, st, true) +
           '</td>';
       }).join('');
       return '<tr><th class="course-col"><a href="' + courseHref(c.name) + '">' + esc(c.name) + '</a>' +
@@ -2019,9 +2079,7 @@
       var cell = stageCell(c, i, plan, saved, m);
       return '<tr' + (cell.overdue ? ' class="row-late"' : '') + '>' +
         '<td class="num">' + (i + 1) + '</td><td>' + esc(st.name) + '</td>' +
-        '<td>' + (st.key === 'done' ? chip('done', 'Complete', '✓')
-          : st.key === 'active' ? chip('active', 'In progress', '▶')
-            : chip('wait', st.label || 'Not started', '○')) + '</td>' +
+        '<td>' + statusPicker(c.name, i, st) + '</td>' +
         '<td><input type="date" class="stage-due" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
         esc(cell.due ? isoDate(cell.due) : '') + '"' + (saved[i] && saved[i].due ? '' : ' data-suggested="1"') + '></td>' +
         '<td><input type="text" class="stage-who" data-course="' + esc(c.name) + '" data-stage="' + i + '" value="' +
@@ -2231,9 +2289,30 @@
      build gives every stage a suggested date (worked back from the go-live
      target) and a suggested role, so nobody starts from a blank grid. Anything
      typed here overrides the suggestion and is marked as agreed. */
+  function statusPicker(courseName, index, step, compact) {
+    var overridden = !!(stagePlanFor(courseName)[index] || {}).status;
+    return '<select class="stage-status' + (compact ? ' compact' : '') + '"' +
+      ' data-course="' + esc(courseName) + '" data-stage="' + index + '"' +
+      (overridden ? '' : ' data-suggested="1"') +
+      ' title="' + esc(overridden ? 'Set here' : 'From the spreadsheet') + '">' +
+      STAGE_STATUSES.map(function (o) {
+        return '<option value="' + o.value + '"' + (step.key === o.value ? ' selected' : '') + '>' +
+          esc(compact ? o.glyph + ' ' + o.label : o.label) + '</option>';
+      }).join('') +
+      (overridden ? '<option value="">— back to spreadsheet —</option>' : '') +
+      '</select>';
+  }
+
   function stagePlanFor(courseName) {
     var all = state.data.stagePlans || {};
     return all[courseName] || {};
+  }
+  function clearStagePlan(courseName, index, field) {
+    var data = JSON.parse(JSON.stringify(state.data));
+    if (data.stagePlans && data.stagePlans[courseName] && data.stagePlans[courseName][index]) {
+      delete data.stagePlans[courseName][index][field];
+      savePreview(data);
+    }
   }
   function setStagePlan(courseName, index, field, value) {
     var data = JSON.parse(JSON.stringify(state.data));
@@ -2751,6 +2830,14 @@
       });
     });
 
+    $$('.stage-status', main).forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        var course = sel.getAttribute('data-course'), i = +sel.getAttribute('data-stage');
+        if (sel.value === '') clearStagePlan(course, i, 'status');
+        else setStagePlan(course, i, 'status', sel.value);
+        render();
+      });
+    });
     $$('.stage-due', main).forEach(function (input) {
       input.addEventListener('change', function () {
         setStagePlan(input.getAttribute('data-course'), +input.getAttribute('data-stage'), 'due', input.value);

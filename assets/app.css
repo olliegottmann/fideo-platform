@@ -505,3 +505,12 @@ td.client-cell a, th.course-col a, .item-head h3 a { color: inherit; text-decora
 td.client-cell a:hover, th.course-col a:hover, .item-head h3 a:hover { color: var(--brand); text-decoration: underline; }
 a.lr-title { text-decoration: none; color: var(--ink); }
 a.lr-title:hover { color: var(--brand); text-decoration: underline; }
+
+/* stage status pickers */
+select.stage-status {
+  font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid var(--line);
+  border-radius: 7px; background: var(--surface); color: var(--ink); max-width: 160px;
+}
+select.stage-status.compact { font-size: 10.5px; padding: 2px 4px; max-width: 118px; margin-top: 3px; width: 100%; }
+select.stage-status[data-suggested] { color: var(--ink-3); border-style: dashed; background: #FCFBFD; }
+select.stage-status:focus { outline: 2px solid var(--brand); outline-offset: 1px; color: var(--ink); }
