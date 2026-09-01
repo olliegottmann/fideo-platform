@@ -129,6 +129,8 @@
     state.data.updates = state.data.updates || [];
   }
   function savePreview(data) {
+    data.meta = data.meta || {};
+    data.meta.locallyEditedAt = new Date().toISOString();
     try {
       localStorage.setItem(PREVIEW_KEY, JSON.stringify(data));
     } catch (err) {
@@ -1290,13 +1292,50 @@
       '<div class="grid two">' + highPrioritySalesCard(live) + highPriorityCoursesCard() + '</div>';
   };
 
+  function unpublishedSummary() {
+    var d = state.data, parts = [], count = 0;
+    var o = d.overrides || {};
+    var dealEdits = Object.keys(o.deals || {}).length;
+    var courseEdits = Object.keys(o.courses || {}).length;
+    var stageEdits = 0;
+    Object.keys(d.stagePlans || {}).forEach(function (c) {
+      Object.keys(d.stagePlans[c] || {}).forEach(function (i) {
+        var cell = d.stagePlans[c][i] || {};
+        if (cell.due || cell.who || cell.status) stageEdits++;
+      });
+    });
+    if (dealEdits) { parts.push(dealEdits + (dealEdits === 1 ? ' client' : ' clients')); count += dealEdits; }
+    if (courseEdits) { parts.push(courseEdits + (courseEdits === 1 ? ' course' : ' courses')); count += courseEdits; }
+    if (stageEdits) { parts.push(stageEdits + (stageEdits === 1 ? ' stage' : ' stages')); count += stageEdits; }
+    if (Object.keys(o.dealOrder || {}).length) { parts.push('the sales order'); count++; }
+    if (Object.keys(o.courseOrder || {}).length) { parts.push('the build order'); count++; }
+    if (d.buildModel) { parts.push('the standard build'); count++; }
+    return { count: count, parts: parts, at: d.meta && d.meta.locallyEditedAt };
+  }
+
+  /* Sits above every page while there is unpublished work, because the whole
+     failure mode is somebody editing for an afternoon and nobody else seeing it. */
+  function unpublishedBanner() {
+    if (!state.isPreview) return '';
+    var u = unpublishedSummary();
+    if (!u.count) return '';
+    return '<div class="banner unpublished"><span aria-hidden="true">⚠</span><div>' +
+      '<b>Changes on this device only.</b> ' + esc(u.parts.join(', ')) + ' edited here' +
+      (u.at ? ' — last change ' + esc(dateLabel(u.at)) : '') + '. ' +
+      'Nobody else can see any of it until it is published. ' +
+      '<a href="#/import">Publish these changes</a></div></div>';
+  }
+
   function stampLine() {
     var gen = state.data.meta && state.data.meta.generatedAt;
+    var local = state.data.meta && state.data.meta.locallyEditedAt;
     return '<div class="stamp">' +
-      '<span><b>Last updated</b> ' + esc(gen ? dateLabel(gen) : 'unknown') + '</span>' +
+      '<span><b>Last published</b> ' + esc(gen ? dateLabel(gen) : 'unknown') + '</span>' +
+      (state.isPreview && local ? '<span class="chip amber"><span class="glyph">●</span>Edited on this device ' +
+        esc(dateLabel(local)) + ', not published</span>' : '') +
       '<span>Build tracker as at ' + esc((state.data.courses && state.data.courses.asAt) || 'unknown') + '</span>' +
       '<span>Sales tracker as at ' + esc((state.data.pipeline && state.data.pipeline.asAt) || 'unknown') + '</span>' +
-      (state.isPreview ? '<span class="chip amber"><span class="glyph">●</span>Unpublished preview</span>' : '') +
+
       '</div>';
   }
 
@@ -2608,7 +2647,7 @@
     renderChrome();
     var view = views[state.route] || views.overview;
     var main = $('#main');
-    main.innerHTML = view();
+    main.innerHTML = unpublishedBanner() + view();
     bind();
   }
 
