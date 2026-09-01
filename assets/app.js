@@ -220,6 +220,11 @@
   function cloudBanner() {
     var c = cloud();
     if (!c || !c.state.ready) return '';
+    if (state.sharedSeeded && !state.saveError && cloudOnline()) {
+      return '<div class="banner info"><span aria-hidden="true">✓</span><div>' +
+        '<b>This view is now the shared copy.</b> The database was empty, so what you were looking at ' +
+        'has been saved as the version everyone sees.</div></div>';
+    }
     if (state.saveError) {
       return '<div class="banner"><span aria-hidden="true">⚠</span><div>' + esc(state.saveError) +
         ' <button class="btn btn-sm" id="reloadShared">Reload the shared copy</button></div></div>';
@@ -2898,7 +2903,15 @@
         state.showSignIn = false;
         state.saveError = null;
         cloud().load().then(function (shared) {
-          if (shared && shared.meta) { state.data = shared; state.isPreview = false; }
+          if (shared && shared.meta) {
+            state.data = shared;
+            state.isPreview = false;
+          } else if (cloud().state.online && cloud().state.canEdit) {
+            /* Nobody has written the shared copy yet, so this editor's view
+               becomes it. */
+            state.sharedSeeded = true;
+            pushToCloud(state.data);
+          }
           render();
         });
       });
@@ -3164,6 +3177,13 @@
     var c = cloud();
     if (!c) return;
     c.load().then(function (shared) {
+      if (!shared && c.state.online && c.state.canEdit) {
+        /* An editor arrived and the shared copy is empty: seed it from what is
+           on screen, so the database stops being empty without anyone having to
+           think about it. */
+        state.sharedSeeded = true;
+        pushToCloud(state.data);
+      }
       if (shared && shared.meta) {
         var localPreview = null;
         try { localPreview = JSON.parse(localStorage.getItem(PREVIEW_KEY) || 'null'); } catch (err) { localPreview = null; }
