@@ -101,9 +101,16 @@
     });
   }
 
-  /* Last write wins, but never silently: if the row moved since this page loaded,
-     the caller is told so it can warn rather than overwrite someone's afternoon. */
-  function save(data) {
+  /* Saving.
+
+     Saves run one at a time. Two edits in quick succession used to race: the
+     second would re-read the row, see the first one's write, and refuse as if a
+     colleague had got there first. Now a save in flight simply absorbs whatever
+     came after it, and only genuinely foreign writes are treated as conflicts. */
+  var saveChain = Promise.resolve();
+  var queued = null;
+
+  function doSave(data) {
     var c = sb();
     if (!c) return Promise.resolve({ ok: false, reason: 'offline' });
     if (!state.canEdit) return Promise.resolve({ ok: false, reason: 'not-an-editor' });
@@ -111,8 +118,14 @@
     return c.from(CONFIG.table).select('updated_at, updated_by').eq('id', CONFIG.row).maybeSingle()
       .then(function (res) {
         var remote = res && res.data ? res.data.updated_at : null;
-        if (remote && state.updatedAt && remote !== state.updatedAt) {
-          return { ok: false, reason: 'stale', updatedAt: remote, updatedBy: res.data.updated_by };
+        var remoteBy = res && res.data ? res.data.updated_by : null;
+        var mine = String(remoteBy || '').toLowerCase() ===
+                   String((state.user && state.user.email) || '').toLowerCase();
+
+        /* Only stop for a write from somebody else. Our own last write, or one
+           from another of our own tabs, is not a reason to lose this edit. */
+        if (remote && state.updatedAt && remote !== state.updatedAt && !mine) {
+          return { ok: false, reason: 'stale', updatedAt: remote, updatedBy: remoteBy };
         }
         return c.from(CONFIG.table)
           .upsert({ id: CONFIG.row, data: data }, { onConflict: 'id' })
@@ -128,6 +141,17 @@
       }, function (err) {
         return { ok: false, reason: 'error', message: (err && err.message) || 'save failed' };
       });
+  }
+
+  function save(data) {
+    queued = data;
+    saveChain = saveChain.then(function () {
+      if (!queued) return { ok: true, skipped: true };
+      var next = queued;
+      queued = null;
+      return doSave(next);
+    });
+    return saveChain;
   }
 
   /* Managing who may edit. The database decides whether these are allowed;

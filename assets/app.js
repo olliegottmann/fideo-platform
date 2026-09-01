@@ -165,14 +165,14 @@
     c.save(data).then(function (res) {
       state.saving = false;
       if (res.ok) {
-        state.savedAt = res.updatedAt;
+        if (res.updatedAt) state.savedAt = res.updatedAt;
         state.saveError = null;
         state.isPreview = false;
         try { localStorage.removeItem(PREVIEW_KEY); } catch (err) { /* ignore */ }
       } else if (res.reason === 'stale') {
-        state.saveError = 'Someone else saved a change ' +
-          (res.updatedBy ? 'as ' + res.updatedBy + ' ' : '') +
-          'while this page was open. Reload to pick it up — your change here has not been sent.';
+        state.saveError = (res.updatedBy ? res.updatedBy : 'Somebody else') +
+          ' saved a change while this page was open, so this edit was not sent — ' +
+          'reloading will show their version, and you can redo yours on top.';
       } else if (res.reason === 'not-an-editor') {
         state.saveError = 'You are signed in but not on the editors list, so this stayed on your device.';
       } else {
@@ -181,6 +181,15 @@
       renderChrome();
       if (state.saveError) render();
     });
+  }
+
+  function saveChip() {
+    if (!cloudOnline() || !canEditShared()) return '';
+    if (state.saving) return '<span class="chip amber"><span class="glyph">&#9679;</span>Saving…</span>';
+    if (state.saveError) return '<span class="chip risk"><span class="glyph">!</span>Not saved</span>';
+    if (state.savedAt) return '<span class="chip done"><span class="glyph">&#10003;</span>Saved ' +
+      esc(new Date(state.savedAt).toLocaleTimeString('en-IE', { hour: '2-digit', minute: '2-digit' })) + '</span>';
+    return '';
   }
 
   function signInPanel() {
@@ -2837,7 +2846,7 @@
 
     $('#topbarRight').innerHTML =
       (state.isPreview ? '<span class="chip amber"><span class="glyph">●</span>Local preview — not published</span>' : '') +
-      signInPanel() + '<a class="btn" href="#/import">Update data</a>';
+      saveChip() + signInPanel() + '<a class="btn" href="#/import">Update data</a>';
   }
 
   function render() {
