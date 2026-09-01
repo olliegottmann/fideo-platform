@@ -210,12 +210,27 @@
       '<input type="password" id="siPass" placeholder="password" style="min-width:170px">' +
       '<button class="btn primary" id="doSignIn">Sign in</button>' +
       '<button class="btn" id="doSignUp">Create account</button>' +
+      '<button class="btn" id="forgotPass">Forgot password</button>' +
       '<button class="btn" id="cancelSignIn">Cancel</button>' +
       '</div>' +
       (state.signInMessage ? '<p class="hint" style="margin-top:9px">' + esc(state.signInMessage) + '</p>' : '') +
       '<p class="hint" style="margin-top:9px">Anyone can read this dashboard without signing in. ' +
       'Only people on the editors list can change it — ask Oliver to add your address.</p>' +
       '</div></div>';
+  }
+
+  function recoveryPanel() {
+    var c = cloud();
+    if (!c || !c.state.recovery) return '';
+    return '<div class="banner info"><span aria-hidden="true">&#128273;</span><div style="flex:1">' +
+      '<b>Set a new password</b>' +
+      '<div class="filters" style="margin:10px 0 0">' +
+      '<input type="password" id="newPass" placeholder="new password, at least 6 characters" style="min-width:280px">' +
+      '<button class="btn primary" id="saveNewPass">Save password</button>' +
+      '</div>' +
+      (state.recoveryMessage ? '<p class="hint" style="margin-top:9px">' + esc(state.recoveryMessage) + '</p>' : '') +
+      '<p class="hint" style="margin-top:9px">This is the same account you use for the Model Room, so the new ' +
+      'password applies there too.</p></div></div>';
   }
 
   function cloudBanner() {
@@ -2838,7 +2853,7 @@
     }
     var view = views[state.route] || views.overview;
     var main = $('#main');
-    main.innerHTML = cloudBanner() + signInDialog() + unpublishedBanner() + view();
+    main.innerHTML = recoveryPanel() + cloudBanner() + signInDialog() + unpublishedBanner() + view();
     bind();
   }
 
@@ -2998,6 +3013,31 @@
           if (res.ok) cloud().refreshPermission();
           render();
         });
+      });
+    });
+    on('#forgotPass', 'click', function () {
+      var email = $('#siEmail').value.trim();
+      if (!email) { state.signInMessage = 'Type your email address first, then click Forgot password.'; render(); return; }
+      state.signInMessage = 'Sending...'; render();
+      cloud().resetPassword(email).then(function (res) {
+        state.signInMessage = res.ok
+          ? 'If ' + email + ' has an account, a reset link is on its way. Open it on this device and you will be asked to set a new password.'
+          : res.message;
+        render();
+      });
+    });
+    on('#saveNewPass', 'click', function () {
+      var pw = $('#newPass').value;
+      if (!pw || pw.length < 6) { state.recoveryMessage = 'Use at least six characters.'; render(); return; }
+      state.recoveryMessage = 'Saving...'; render();
+      cloud().updatePassword(pw).then(function (res) {
+        state.recoveryMessage = res.ok ? null : res.message;
+        if (res.ok) {
+          state.showSignIn = false;
+          if (location.hash.indexOf('type=recovery') !== -1) location.hash = '#/overview';
+        }
+        render();
+        renderChrome();
       });
     });
     on('#openSignIn', 'click', function () { state.showSignIn = true; state.signInMessage = null; render(); });
@@ -3291,6 +3331,7 @@
     render();
     var c = cloud();
     if (!c) return;
+    c.watchRecovery(function () { render(); });
     c.load().then(function (shared) {
       if (!shared && c.state.online && c.state.canEdit) {
         /* An editor arrived and the shared copy is empty: seed it from what is

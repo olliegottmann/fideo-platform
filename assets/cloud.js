@@ -186,6 +186,49 @@
     });
   }
 
+  /* Forgotten passwords. The link in the email comes back to this page carrying a
+     recovery token; supabase-js swallows it from the URL and reports it, and the
+     page then asks for a new password. */
+  function resetPassword(email) {
+    var c = sb();
+    if (!c) return Promise.resolve({ ok: false, message: 'Not connected.' });
+    var back = root.location.origin + root.location.pathname;
+    return c.auth.resetPasswordForEmail(String(email).trim(), { redirectTo: back })
+      .then(function (res) {
+        if (res.error) return { ok: false, message: res.error.message };
+        return { ok: true };
+      });
+  }
+
+  function updatePassword(newPassword) {
+    var c = sb();
+    if (!c) return Promise.resolve({ ok: false, message: 'Not connected.' });
+    return c.auth.updateUser({ password: newPassword }).then(function (res) {
+      if (res.error) return { ok: false, message: res.error.message };
+      state.user = res.data.user;
+      state.recovery = false;
+      return refreshPermission().then(function () { return { ok: true }; });
+    });
+  }
+
+  function watchRecovery(onRecovery) {
+    var c = sb();
+    if (!c) return;
+    /* Either the token is still in the address bar, or supabase-js has already
+       taken it and is about to tell us. Both paths end in the same place. */
+    if (String(root.location.hash || '').indexOf('type=recovery') !== -1) {
+      state.recovery = true;
+    }
+    c.auth.onAuthStateChange(function (event, session) {
+      if (event === 'PASSWORD_RECOVERY') {
+        state.recovery = true;
+        state.user = session ? session.user : state.user;
+        if (onRecovery) onRecovery();
+      }
+    });
+    if (state.recovery && onRecovery) onRecovery();
+  }
+
   function signOut() {
     var c = sb();
     if (!c) return Promise.resolve();
@@ -203,6 +246,9 @@
     signIn: signIn,
     signUp: signUp,
     signOut: signOut,
+    resetPassword: resetPassword,
+    updatePassword: updatePassword,
+    watchRecovery: watchRecovery,
     listEditors: listEditors,
     addEditor: addEditor,
     removeEditor: removeEditor,
