@@ -17,19 +17,26 @@ Everything on screen comes from the tracker spreadsheets — nobody retypes anyt
 
 ## Shared data
 
-The dashboard state lives in one row of a Supabase table (, in the
-Model Room project, kept apart by the  prefix). Everyone reads the same
-copy from wherever they are.
+The dashboard state lives in one row of a Supabase table — `public.fideo_state`,
+inside the Model Room project, kept apart from that app by the `fideo_` prefix.
+Everyone reads the same copy, from wherever they are.
 
 - **Reading** is open to anyone with the link, signed in or not.
-- **Editing** needs an account whose email is on the  table. The
-  database enforces that, not the page: an anonymous write is refused by
+- **Editing** needs an account whose email is listed in `public.fideo_editors`.
+  The database enforces this, not the page: an anonymous write is refused by
   row-level security.
-- If the database cannot be reached the app falls back to the copy bundled in
-   and says so on screen. Anything edited then stays on that
+- **Clashes** are caught. Every save checks whether the row changed since the
+  page was loaded; if someone else saved first, the write is refused and you are
+  offered a reload, rather than quietly overwriting their work.
+- **If the database is unreachable**, the app falls back to the copy bundled in
+  `data/dashboard.js` and says so on screen. Anything edited then stays on that
   device until it can be shared.
 
-To add an editor, insert their email into .
+To add an editor:
+
+```sql
+insert into public.fideo_editors (email, note) values ('name@example.com', 'who they are');
+```
 
 ## Updating the numbers (the normal way — no command line)
 
