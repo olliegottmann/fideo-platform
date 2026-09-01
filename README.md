@@ -15,6 +15,22 @@ Everything on screen comes from the tracker spreadsheets — nobody retypes anyt
 | **Updates** | Written notes, plus an automatic entry each time new data is imported |
 | **Update data** | Drop a new spreadsheet in and publish the new numbers |
 
+## Shared data
+
+The dashboard state lives in one row of a Supabase table (, in the
+Model Room project, kept apart by the  prefix). Everyone reads the same
+copy from wherever they are.
+
+- **Reading** is open to anyone with the link, signed in or not.
+- **Editing** needs an account whose email is on the  table. The
+  database enforces that, not the page: an anonymous write is refused by
+  row-level security.
+- If the database cannot be reached the app falls back to the copy bundled in
+   and says so on screen. Anything edited then stays on that
+  device until it can be shared.
+
+To add an editor, insert their email into .
+
 ## Updating the numbers (the normal way — no command line)
 
 1. Open the dashboard and go to **Update data**.

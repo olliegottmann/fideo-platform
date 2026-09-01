@@ -17,6 +17,10 @@
     pending: null,          // dataset staged by the importer
     pendingDiff: [],
     pendingTargets: [],
+    showSignIn: false,
+    signInMessage: null,
+    saveError: null,
+    saving: false,
     filters: {},
     sort: { pipeline: { key: 'stageNum', dir: -1 } }
   };
@@ -138,10 +142,94 @@
     }
     state.data = data;
     state.isPreview = true;
+    pushToCloud(data);
   }
   function clearPreview() {
     localStorage.removeItem(PREVIEW_KEY);
     loadData();
+  }
+
+  /* ---------- shared storage ----------
+     state.data comes from the database when it can be reached, so everyone sees
+     the same dashboard. Edits by a signed-in editor go straight back to it.
+     Without a sign-in, edits stay on the device exactly as before, and the
+     banner keeps saying so. */
+  function cloud() { return window.FideoCloud || null; }
+  function cloudOnline() { var c = cloud(); return !!(c && c.state.online); }
+  function canEditShared() { var c = cloud(); return !!(c && c.state.canEdit); }
+
+  function pushToCloud(data) {
+    var c = cloud();
+    if (!c || !canEditShared()) return;
+    state.saving = true;
+    c.save(data).then(function (res) {
+      state.saving = false;
+      if (res.ok) {
+        state.savedAt = res.updatedAt;
+        state.saveError = null;
+        state.isPreview = false;
+        try { localStorage.removeItem(PREVIEW_KEY); } catch (err) { /* ignore */ }
+      } else if (res.reason === 'stale') {
+        state.saveError = 'Someone else saved a change ' +
+          (res.updatedBy ? 'as ' + res.updatedBy + ' ' : '') +
+          'while this page was open. Reload to pick it up — your change here has not been sent.';
+      } else if (res.reason === 'not-an-editor') {
+        state.saveError = 'You are signed in but not on the editors list, so this stayed on your device.';
+      } else {
+        state.saveError = res.message || 'Could not save to the shared database — kept on this device.';
+      }
+      renderChrome();
+      if (state.saveError) render();
+    });
+  }
+
+  function signInPanel() {
+    var c = cloud();
+    if (!c) return '';
+    var s = c.state;
+    if (!s.ready) return '<span class="chip ghost">Connecting…</span>';
+    if (!s.online) {
+      return '<span class="chip risk" data-tip="' + esc(s.error || '') +
+        '">Offline — showing the last published copy</span>';
+    }
+    if (!s.user) {
+      return '<button class="btn" id="openSignIn">Sign in to edit</button>';
+    }
+    return '<span class="chip ' + (s.canEdit ? 'done' : 'wait') + '">' +
+      esc(s.user.email) + (s.canEdit ? ' · can edit' : ' · read only') + '</span>' +
+      '<button class="btn btn-sm" id="signOut">Sign out</button>';
+  }
+
+  function signInDialog() {
+    if (!state.showSignIn) return '';
+    return '<div class="banner info" id="signInBox"><span aria-hidden="true">🔑</span><div style="flex:1">' +
+      '<b>Sign in to edit the shared dashboard</b>' +
+      '<div class="filters" style="margin:10px 0 0">' +
+      '<input type="email" id="siEmail" placeholder="you@fideo-global.com" style="min-width:230px">' +
+      '<input type="password" id="siPass" placeholder="password" style="min-width:170px">' +
+      '<button class="btn primary" id="doSignIn">Sign in</button>' +
+      '<button class="btn" id="doSignUp">Create account</button>' +
+      '<button class="btn" id="cancelSignIn">Cancel</button>' +
+      '</div>' +
+      (state.signInMessage ? '<p class="hint" style="margin-top:9px">' + esc(state.signInMessage) + '</p>' : '') +
+      '<p class="hint" style="margin-top:9px">Anyone can read this dashboard without signing in. ' +
+      'Only people on the editors list can change it — ask Oliver to add your address.</p>' +
+      '</div></div>';
+  }
+
+  function cloudBanner() {
+    var c = cloud();
+    if (!c || !c.state.ready) return '';
+    if (state.saveError) {
+      return '<div class="banner"><span aria-hidden="true">⚠</span><div>' + esc(state.saveError) +
+        ' <button class="btn btn-sm" id="reloadShared">Reload the shared copy</button></div></div>';
+    }
+    if (!c.state.online) {
+      return '<div class="banner"><span aria-hidden="true">⚠</span><div>' +
+        '<b>Not connected to the shared database.</b> You are looking at the copy published with the site' +
+        (c.state.error ? ' (' + esc(c.state.error) + ')' : '') + '. Anything you change stays on this device.</div></div>';
+    }
+    return '';
   }
 
   /* ---------- edits ----------
@@ -1316,6 +1404,18 @@
   /* Sits above every page while there is unpublished work, because the whole
      failure mode is somebody editing for an afternoon and nobody else seeing it. */
   function unpublishedBanner() {
+    /* Work done on this device before the shared database existed. The shared
+       copy now takes precedence on screen, so this offers it back rather than
+       letting it quietly disappear. */
+    if (!state.isPreview && state.pendingLocal) {
+      var when = state.pendingLocal.meta && state.pendingLocal.meta.locallyEditedAt;
+      return '<div class="banner unpublished"><span aria-hidden="true">⚠</span><div>' +
+        '<b>This device has older changes that were never shared</b>' +
+        (when ? ', last edited ' + esc(dateLabel(when)) : '') + '. ' +
+        'They are not part of what everyone else sees. ' +
+        '<button class="btn btn-sm" id="downloadLocal">Download them</button> ' +
+        '<button class="btn btn-sm" id="discardLocal">Discard</button></div></div>';
+    }
     if (!state.isPreview) return '';
     var u = unpublishedSummary();
     if (!u.count) return '';
@@ -2639,7 +2739,7 @@
 
     $('#topbarRight').innerHTML =
       (state.isPreview ? '<span class="chip amber"><span class="glyph">●</span>Local preview — not published</span>' : '') +
-      '<a class="btn" href="#/import">Update data</a>';
+      signInPanel() + '<a class="btn" href="#/import">Update data</a>';
   }
 
   function render() {
@@ -2647,7 +2747,7 @@
     renderChrome();
     var view = views[state.route] || views.overview;
     var main = $('#main');
-    main.innerHTML = unpublishedBanner() + view();
+    main.innerHTML = cloudBanner() + signInDialog() + unpublishedBanner() + view();
     bind();
   }
 
@@ -2772,6 +2872,50 @@
         });
       });
     })();
+
+    on('#downloadLocal', 'click', function () {
+      if (state.pendingLocal) download('dashboard-unpublished-local.js', serialise(state.pendingLocal));
+    });
+    on('#discardLocal', 'click', function () {
+      if (!confirm('Discard the unshared changes on this device? Download them first if they matter.')) return;
+      try { localStorage.removeItem(PREVIEW_KEY); } catch (err) { /* ignore */ }
+      state.pendingLocal = null;
+      render();
+    });
+    on('#openSignIn', 'click', function () { state.showSignIn = true; state.signInMessage = null; render(); });
+    on('#cancelSignIn', 'click', function () { state.showSignIn = false; render(); });
+    on('#signOut', 'click', function () {
+      cloud().signOut().then(function () { state.signInMessage = null; render(); renderChrome(); });
+    });
+    on('#reloadShared', 'click', function () { location.reload(); });
+    on('#doSignIn', 'click', function () {
+      var email = $('#siEmail').value.trim(), pass = $('#siPass').value;
+      if (!email || !pass) { state.signInMessage = 'Enter an email and password.'; render(); return; }
+      state.signInMessage = 'Signing in…'; render();
+      cloud().signIn(email, pass).then(function (res) {
+        if (!res.ok) { state.signInMessage = res.message; render(); return; }
+        state.signInMessage = null;
+        state.showSignIn = false;
+        state.saveError = null;
+        cloud().load().then(function (shared) {
+          if (shared && shared.meta) { state.data = shared; state.isPreview = false; }
+          render();
+        });
+      });
+    });
+    on('#doSignUp', 'click', function () {
+      var email = $('#siEmail').value.trim(), pass = $('#siPass').value;
+      if (!email || !pass) { state.signInMessage = 'Enter an email and a password of at least six characters.'; render(); return; }
+      state.signInMessage = 'Creating the account…'; render();
+      cloud().signUp(email, pass).then(function (res) {
+        state.signInMessage = res.ok
+          ? (res.needsConfirmation
+            ? 'Account created. Check ' + email + ' for the confirmation link, then sign in.'
+            : 'Account created. Signing in…')
+          : res.message;
+        render();
+      });
+    });
 
     /* --- editing clients on the sales pipeline --- */
     $$('[data-edit-deal]', main).forEach(function (btn) {
@@ -3013,6 +3157,28 @@
     }
   });
 
-  loadData();
-  render();
+  /* Boot: try the shared database first, fall back to the published copy. */
+  function bootstrap() {
+    loadData();
+    render();
+    var c = cloud();
+    if (!c) return;
+    c.load().then(function (shared) {
+      if (shared && shared.meta) {
+        var localPreview = null;
+        try { localPreview = JSON.parse(localStorage.getItem(PREVIEW_KEY) || 'null'); } catch (err) { localPreview = null; }
+        state.data = shared;
+        state.data.updates = state.data.updates || [];
+        state.isPreview = false;
+        /* Local work from before the database existed is kept, not thrown away:
+           it stays on the device and the banner keeps asking for it to be published. */
+        if (localPreview && localPreview.meta && localPreview.meta.locallyEditedAt) {
+          state.pendingLocal = localPreview;
+        }
+      }
+      render();
+    });
+  }
+
+  bootstrap();
 })();
