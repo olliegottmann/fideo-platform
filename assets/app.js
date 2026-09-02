@@ -105,12 +105,21 @@
         (wide ? esc(s.name) : (i + 1)) + '</span>';
     }).join('') + '</div>';
   }
-  function stepLegend() {
-    return '<div class="legend">' +
-      '<span><i style="background:var(--done-mark)"></i>✓ Complete</span>' +
-      '<span><i style="background:var(--active-mark)"></i>▶ In progress / WIP</span>' +
-      '<span><i style="background:var(--wait-mark)"></i>○ TBC</span>' +
-      '<span><i style="background:#E7E5EA"></i>· Not applicable / blank</span>' +
+  function stepLegend(full) {
+    var rows = [
+      ['done', 'Complete', 'the stage is finished'],
+      ['active', 'In progress', 'someone is working on it now'],
+      ['pending', 'To be confirmed', 'planned, not started, no date agreed'],
+      ['none', 'Not started', 'blank on the tracker, or not applicable'],
+      ['overdue', 'Past its date', 'the date has gone by and the stage is not complete']
+    ];
+    return '<div class="legend colour-key">' +
+      rows.map(function (r) {
+        return '<span><i class="key-swatch ' + r[0] + '"></i><b>' + r[1] + '</b>' +
+          (full ? ' \u2014 ' + r[2] : '') + '</span>';
+      }).join('') +
+      (full ? '<span><i class="key-swatch suggested"></i><b>Dashed</b> \u2014 a suggested date or owner, ' +
+        'not yet agreed by anyone</span>' : '') +
       '</div>';
   }
 
@@ -1508,6 +1517,129 @@
       '</div></div>';
   }
 
+  /* ---------- adding new work ----------
+     With the spreadsheet import gone, a new course or client has to be able to
+     start life here. Both are written into the same shape the tracker produced,
+     so everything downstream treats them identically. */
+  function newCourseFrom(fields) {
+    var stages = (state.data.courses && state.data.courses.stageNames) || [];
+    if (!stages.length) {
+      stages = ['Data Gathering', 'Overview & Timeframes', 'Create Script', 'On-Demand Content',
+        'Activities', 'Academy Setup', 'Timetables', 'Tutor Recording', 'QA', 'Go-Live'];
+    }
+    var target = window.FideoParse
+      ? window.FideoParse.parseTarget(fields.target || '')
+      : { label: fields.target || '', sortKey: null, provisional: false };
+    return {
+      name: fields.name,
+      priority: (fields.priority || 'MEDIUM').toUpperCase(),
+      steps: stages.map(function (name) { return { name: name, key: 'none', label: '' }; }),
+      stagesDone: 0,
+      stagesActive: 0,
+      stageCount: stages.length,
+      progress: 0,
+      currentStage: 'Not started',
+      target: target.label,
+      targetSort: target.sortKey,
+      provisional: target.provisional,
+      owner: fields.owner || '',
+      notes: fields.notes || '',
+      flags: window.FideoParse ? window.FideoParse.flagsFor(fields.notes || '') : [],
+      addedHere: new Date().toISOString().slice(0, 10)
+    };
+  }
+
+  function newDealFrom(fields) {
+    var target = window.FideoParse
+      ? window.FideoParse.parseTarget(fields.target || '')
+      : { label: fields.target || '', sortKey: null, provisional: false };
+    var step = PROCESS.filter(function (x) { return x.id === fields.step; })[0];
+    return {
+      ref: '',
+      client: fields.client,
+      vertical: fields.vertical || 'Unassigned',
+      stageNum: null,
+      stage: step ? step.name : '',
+      stageLabel: step ? step.id + '. ' + step.name : '',
+      step: fields.step || '1',
+      priority: fields.priority || 'Medium',
+      target: target.label,
+      targetSort: target.sortKey,
+      revenue: null,
+      notes: fields.notes || '',
+      flags: window.FideoParse ? window.FideoParse.flagsFor(fields.notes || '') : [],
+      addedHere: new Date().toISOString().slice(0, 10)
+    };
+  }
+
+  function addCourse(fields) {
+    var data = JSON.parse(JSON.stringify(state.data));
+    data.courses = data.courses || { items: [], stageNames: [] };
+    data.courses.items = data.courses.items || [];
+    var clash = data.courses.items.some(function (c) {
+      return String(c.name).toLowerCase() === String(fields.name).toLowerCase();
+    });
+    if (clash) return 'There is already a course called that.';
+    data.courses.items.push(newCourseFrom(fields));
+    savePreview(data);
+    return null;
+  }
+
+  function addDeal(fields) {
+    var data = JSON.parse(JSON.stringify(state.data));
+    data.pipeline = data.pipeline || { deals: [] };
+    data.pipeline.deals = data.pipeline.deals || [];
+    var clash = data.pipeline.deals.some(function (d) {
+      return String(d.client).toLowerCase() === String(fields.client).toLowerCase();
+    });
+    if (clash) return 'There is already a client called that.';
+    data.pipeline.deals.push(newDealFrom(fields));
+    savePreview(data);
+    return null;
+  }
+
+  function addForm(kind) {
+    var open = state.adding === kind;
+    var noun = kind === 'course' ? 'course' : 'client';
+    if (!canEditShared() && cloudOnline()) {
+      return '';
+    }
+    if (!open) {
+      return '<div style="margin-bottom:16px">' +
+        '<button class="btn primary" data-add="' + kind + '">Add a ' + noun + '</button>' +
+        (state.addMessage ? ' <span class="hint">' + esc(state.addMessage) + '</span>' : '') + '</div>';
+    }
+
+    var fields = kind === 'course'
+      ? '<label>Course name<input type="text" id="afName" placeholder="e.g. Malta AML Part II" style="min-width:260px"></label>' +
+        '<label>Priority<select id="afPriority">' +
+        ['HIGH', 'MEDIUM', 'LOW'].map(function (x) { return '<option>' + x + '</option>'; }).join('') +
+        '</select></label>' +
+        '<label>Go-live target<input type="text" id="afTarget" placeholder="e.g. Q1 2027"></label>' +
+        '<label>Owner<input type="text" id="afOwner" placeholder="e.g. AQ/OM"></label>'
+      : '<label>Client name<input type="text" id="afName" placeholder="e.g. Bank of Valletta" style="min-width:240px"></label>' +
+        '<label>Vertical<input type="text" id="afVertical" placeholder="e.g. RegTech / AML"></label>' +
+        '<label>Step<select id="afStep">' +
+        PROCESS.filter(function (x) { return !x.gate; }).map(function (x) {
+          return '<option value="' + x.id + '">' + esc(x.id + '. ' + x.name) + '</option>';
+        }).join('') + '</select></label>' +
+        '<label>Priority<select id="afPriority">' +
+        ['High', 'Medium', 'Low', 'Monitor'].map(function (x) { return '<option>' + x + '</option>'; }).join('') +
+        '</select></label>' +
+        '<label>Target go-live<input type="text" id="afTarget" placeholder="e.g. Q4 2026"></label>';
+
+    return '<section class="card" style="margin-bottom:16px">' +
+      '<div class="card-head"><h2>Add a ' + noun + '</h2>' +
+      '<span class="hint">it starts with every stage not started, and you fill it in from there</span></div>' +
+      '<div class="editor"><div class="editor-grid">' + fields + '</div>' +
+      '<label class="editor-notes">Notes<textarea id="afNotes" placeholder="Anything worth knowing"></textarea></label>' +
+      '<div class="editor-actions">' +
+      '<button class="btn primary" data-save-add="' + kind + '">Add it</button>' +
+      '<button class="btn" data-add="">Cancel</button>' +
+      (state.addMessage ? '<span class="hint">' + esc(state.addMessage) + '</span>' : '') +
+      '</div></div></section>';
+  }
+
   function stampLine() {
     var gen = state.data.meta && state.data.meta.generatedAt;
     var local = state.data.meta && state.data.meta.locallyEditedAt;
@@ -1610,6 +1742,7 @@
     return '<section class="card"><div class="card-head"><h2>Building a programme</h2>' +
       '<span class="hint">the ten build stages · ' + list.length + ' courses · click a stage for names</span></div>' +
       '<div class="process">' + boxes + '</div>' + panel +
+      stepLegend(false) +
       '<div class="legend" style="margin-top:12px">' +
       '<span><b>' + notStarted.length + '</b> not started</span>' +
       '<span><b>' + complete.length + '</b> all ten stages complete</span>' +
@@ -1742,7 +1875,8 @@
       '<tbody>' + dealRows(unplaced) + '</tbody></table></div></section>'
       : '';
 
-    return banner + salesStepsCard(all.filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; })) +
+    return banner + addForm('client') +
+      salesStepsCard(all.filter(function (d) { return String(d.priority).toLowerCase() !== 'dead'; })) +
       '<div style="height:16px"></div>' +
       salesPriorityCard(list, 8) +
       '<div style="height:18px"></div>' + filters +
@@ -2145,18 +2279,18 @@
         ? '<div class="table-wrap grid-scroll"><table class="stage-grid"><thead><tr><th class="course-col">Course</th>' +
         headCells + '</tr></thead><tbody>' + gridRows + '</tbody></table></div>'
         : '<p class="empty">No courses match those filters.</p>') +
-      '<div class="legend" style="margin-top:12px">' +
-      '<span><i style="background:var(--done-bg)"></i>Stage complete</span>' +
-      '<span><i style="background:var(--active-bg)"></i>In progress</span>' +
-      '<span><i style="background:#fff;border:1px solid var(--line)"></i>Not started</span>' +
-      '<span><i style="background:#FDECEC"></i>Past its date</span>' +
-      '</div></section>';
+      stepLegend(false) + '</section>';
 
     var footnotes = (state.data.courses.footnotes || []).map(function (n) {
       return '<div class="banner info"><span aria-hidden="true">ℹ</span><div>' + esc(n) + '</div></div>';
     }).join('');
 
-    return strip + '<div style="height:16px"></div>' +
+    var colourKey = '<section class="card" style="margin-bottom:16px">' +
+      '<div class="card-head"><h2>What the colours mean</h2>' +
+      '<span class="hint">the same colours are used on every page</span></div>' +
+      stepLegend(true) + '</section>';
+
+    return strip + colourKey + addForm('course') + '<div style="height:16px"></div>' +
       ruleNote('<b>Build order:</b> ' + esc(PRIORITY_RULE_BUILD)) +
       '<div class="grid two">' + highCard + overdueCard + '</div>' +
       '<div style="height:16px"></div>' + peopleCard +
@@ -3106,6 +3240,43 @@
 
     on('#clearPreview', 'click', function () {
       if (confirm('Discard the local preview and go back to the published data?')) { clearPreview(); render(); }
+    });
+    $$('[data-add]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.adding = btn.getAttribute('data-add') || null;
+        state.addMessage = null;
+        render();
+      });
+    });
+    $$('[data-save-add]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var kind = btn.getAttribute('data-save-add');
+        var name = ($('#afName') || {}).value;
+        name = (name || '').trim();
+        if (!name) { state.addMessage = 'Give it a name first.'; render(); return; }
+        var err;
+        if (kind === 'course') {
+          err = addCourse({
+            name: name,
+            priority: ($('#afPriority') || {}).value,
+            target: (($('#afTarget') || {}).value || '').trim(),
+            owner: (($('#afOwner') || {}).value || '').trim(),
+            notes: (($('#afNotes') || {}).value || '').trim()
+          });
+        } else {
+          err = addDeal({
+            client: name,
+            vertical: (($('#afVertical') || {}).value || '').trim(),
+            step: ($('#afStep') || {}).value,
+            priority: ($('#afPriority') || {}).value,
+            target: (($('#afTarget') || {}).value || '').trim(),
+            notes: (($('#afNotes') || {}).value || '').trim()
+          });
+        }
+        state.addMessage = err || (name + ' added.');
+        if (!err) state.adding = null;
+        render();
+      });
     });
     on('#saveSlip', 'click', function () { recordSlip($('#slipReason').value.trim(), $('#slipAgreed').value.trim()); });
     on('#skipSlip', 'click', function () { recordSlip('', ''); });

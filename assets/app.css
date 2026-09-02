@@ -517,3 +517,33 @@ select.stage-status:focus { outline: 2px solid var(--brand); outline-offset: 1px
 
 .banner.unpublished { border-color: var(--amber); background: #FFF7DE; }
 .banner.unpublished a { color: var(--brand-dark); font-weight: 600; }
+
+/* ---------- stage colours, one scheme used everywhere ----------
+   Complete green, in progress amber, to-be-confirmed grey, not started hatched,
+   past its date red. Deliberately conventional: red has to mean trouble, because
+   it is also what an overdue date uses. */
+.key-swatch {
+  width: 15px; height: 15px; border-radius: 4px; display: inline-block;
+  border: 1px solid rgba(34,30,27,.14);
+}
+.key-swatch.done     { background: var(--done-bg);   border-color: var(--done-mark); }
+.key-swatch.active   { background: var(--active-bg); border-color: var(--active-mark); }
+.key-swatch.pending  { background: var(--wait-bg);   border-color: var(--wait-mark); }
+.key-swatch.none     { background: repeating-linear-gradient(45deg,#fff,#fff 3px,#F1EFF4 3px,#F1EFF4 6px); }
+.key-swatch.overdue  { background: var(--risk-bg);   border-color: var(--risk-mark); }
+.key-swatch.suggested{ background: #FCFBFD; border: 1px dashed var(--grey); }
+.legend.colour-key { gap: 16px; align-items: center; }
+.legend.colour-key b { color: var(--ink); font-weight: 600; }
+
+/* the grid cells carry a stronger left edge so status reads at a glance */
+td.grid-cell            { border-left: 3px solid var(--line-2); }
+td.grid-cell.done       { background: var(--done-bg);   border-left-color: var(--done-mark); }
+td.grid-cell.active     { background: var(--active-bg); border-left-color: var(--active-mark); }
+td.grid-cell.pending    { background: #fff;             border-left-color: var(--wait-mark); }
+td.grid-cell.none       { background: repeating-linear-gradient(45deg,#fff,#fff 4px,#F6F4F8 4px,#F6F4F8 8px); }
+td.grid-cell.overdue    { background: var(--risk-bg);   border-left-color: var(--risk-mark); }
+
+/* and the stage strips match them */
+.step.done    { box-shadow: inset 0 -2px 0 var(--done-mark); }
+.step.active  { box-shadow: inset 0 -2px 0 var(--active-mark); }
+.step.pending { box-shadow: inset 0 -2px 0 var(--wait-mark); }
