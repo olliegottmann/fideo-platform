@@ -1292,6 +1292,8 @@
     if (state.filters.editingCourse !== c.name) return '';
     return '<tr class="editor-row"><td colspan="' + colspan + '"><div class="editor">' +
       '<div class="editor-grid">' +
+      '<label>Course name<input type="text" class="ec-name" data-course-name="' + esc(c.name) + '" value="' +
+      esc(c.name) + '" style="min-width:260px"></label>' +
       '<label>Priority<select class="ec-priority" data-course-name="' + esc(c.name) + '">' +
       ['HIGH', 'MEDIUM', 'LOW', 'UNSET'].map(function (p) {
         return '<option' + (String(c.priority).toUpperCase() === p ? ' selected' : '') + '>' + p + '</option>';
@@ -1638,6 +1640,55 @@
       '<button class="btn" data-add="">Cancel</button>' +
       (state.addMessage ? '<span class="hint">' + esc(state.addMessage) + '</span>' : '') +
       '</div></div></section>';
+  }
+
+  /* Renaming a course. The name is the key everything else is filed under, so a
+     rename has to carry the stage dates, the edits, the manual build order and
+     the record of moved dates with it, or they are quietly orphaned. */
+  function renameCourse(oldName, newName) {
+    newName = String(newName || '').trim();
+    if (!newName) return 'Give it a name.';
+    if (newName === oldName) return null;
+
+    var data = JSON.parse(JSON.stringify(state.data));
+    var items = (data.courses && data.courses.items) || [];
+    var clash = items.some(function (c) {
+      return String(c.name).toLowerCase() === newName.toLowerCase() &&
+             String(c.name).toLowerCase() !== String(oldName).toLowerCase();
+    });
+    if (clash) return 'There is already a course called that.';
+
+    var found = false;
+    items.forEach(function (c) { if (c.name === oldName) { c.name = newName; found = true; } });
+    if (!found) return 'That course is no longer here.';
+
+    function move(map) {
+      if (map && Object.prototype.hasOwnProperty.call(map, oldName)) {
+        map[newName] = map[oldName];
+        delete map[oldName];
+      }
+    }
+    data.overrides = data.overrides || {};
+    move(data.overrides.courses);
+    move(data.overrides.courseOrder);
+    move(data.stagePlans);
+
+    /* The moved-dates log points at a course by name; repoint it so the history
+       does not end up describing something that appears not to exist. */
+    ((data.history || {}).slips || []).forEach(function (slip) {
+      if (slip.course === oldName) slip.course = newName;
+    });
+
+    data.updates = data.updates || [];
+    data.updates.unshift({
+      date: new Date().toISOString().slice(0, 10),
+      title: 'Course renamed',
+      tag: 'Build',
+      body: '"' + oldName + '" is now "' + newName + '".'
+    });
+
+    savePreview(data);
+    return null;
   }
 
   function stampLine() {
@@ -2411,6 +2462,8 @@
       '<span class="hint">saved as you change each field</span></div>' +
       '<div class="editor">' +
       '<div class="editor-grid">' +
+      '<label>Course name<input type="text" class="ec-name" data-course-name="' + esc(c.name) + '" value="' +
+      esc(c.name) + '" style="min-width:280px"></label>' +
       '<label>Priority<select class="ec-priority" data-course-name="' + esc(c.name) + '">' +
       ['HIGH', 'MEDIUM', 'LOW', 'UNSET'].map(function (p) {
         return '<option' + (String(c.priority).toUpperCase() === p ? ' selected' : '') + '>' + p + '</option>';
@@ -3177,6 +3230,24 @@
       btn.addEventListener('click', function () {
         clearOvrField('courses', btn.getAttribute('data-restore-course'), 'archived');
         render();
+      });
+    });
+    $$('.ec-name', main).forEach(function (el) {
+      var was = el.getAttribute('data-course-name');
+      el.addEventListener('change', function () {
+        var err = renameCourse(was, el.value);
+        if (err) {
+          state.addMessage = err;
+          el.value = was;
+          render();
+          return;
+        }
+        /* If this is the course's own page, its address changes with it. */
+        if (state.route === 'course' && state.routeParam === was) {
+          location.hash = '#/course/' + encodeURIComponent(el.value.trim());
+        } else {
+          render();
+        }
       });
     });
     [['.ec-priority', 'priority'], ['.ec-target', 'target'], ['.ec-owner', 'owner'], ['.ec-notes', 'notes']].forEach(function (pair) {
