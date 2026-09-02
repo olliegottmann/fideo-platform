@@ -1397,7 +1397,7 @@
     var updatesCard = '<section class="card"><div class="card-head"><h2>Latest updates</h2>' +
       '<a class="hint" href="#/updates">See all</a></div>' +
       (updates.length ? '<div class="timeline">' + updates.map(updateRow).join('') + '</div>'
-        : '<p class="empty">No updates posted yet. Add one from the <a href="#/import">Update data</a> tab.</p>') +
+        : '<p class="empty">No updates posted yet. Post one from the <a href="#/updates">Updates</a> page.</p>') +
       '</section>';
 
     /* Deliberately high level. Two separate journeys — selling a programme and
@@ -1467,6 +1467,45 @@
       '<b>Not saved to the shared dashboard.</b> ' + esc(why) + ' ' +
       esc(u.parts.join(', ')) + ' changed here' + (u.at ? ', last edit ' + esc(dateLabel(u.at)) : '') + '. ' +
       fix + '</div></div>';
+  }
+
+  /* A go-live date that moves still has to be explained. The spreadsheet import
+     used to ask at upload time; now the question follows the edit itself. */
+  function noteTargetChange(kind, key, from, to, owner) {
+    if (String(from || '') === String(to || '')) return;
+    state.pendingSlip = { kind: kind, key: key, from: from || 'none', to: to || 'none', owner: owner || '' };
+  }
+
+  function recordSlip(reason, agreedBy) {
+    var sp = state.pendingSlip;
+    if (!sp) return;
+    var data = JSON.parse(JSON.stringify(state.data));
+    data.history = data.history || { slips: [] };
+    data.history.slips.push({
+      date: new Date().toISOString().slice(0, 10),
+      course: sp.key, from: sp.from, to: sp.to, owner: sp.owner,
+      reason: reason || '', agreedBy: agreedBy || '',
+      source: sp.kind === 'deal' ? 'client date, edited here' : 'edited here'
+    });
+    state.pendingSlip = null;
+    savePreview(data);
+    render();
+  }
+
+  function slipPrompt() {
+    var sp = state.pendingSlip;
+    if (!sp) return '';
+    var gone = !String(sp.to).trim() || /^(tbc|none|under review)$/i.test(String(sp.to).trim());
+    return '<div class="banner"><span aria-hidden="true">&#9888;</span><div style="flex:1">' +
+      '<b>' + esc(sp.key) + '</b> moved from <b>' + esc(sp.from) + '</b> to <b>' + esc(sp.to) + '</b>' +
+      (gone && sp.from !== 'none' ? ' &mdash; that removes the date rather than moving it' : '') + '.' +
+      '<div class="filters" style="margin:10px 0 0">' +
+      '<input type="text" id="slipReason" placeholder="Why has it moved?" style="min-width:300px">' +
+      '<input type="text" id="slipAgreed" placeholder="Agreed with" style="min-width:170px">' +
+      '<button class="btn primary" id="saveSlip">Record it</button>' +
+      '<button class="btn" id="skipSlip">Skip</button></div>' +
+      '<p class="hint" style="margin-top:8px">Skipping still records the change, as <b>no reason given</b>.</p>' +
+      '</div></div>';
   }
 
   function stampLine() {
@@ -2375,7 +2414,15 @@
       '<p class="note">You are signed in as ' + esc(s.user.email) + ' but not on the editors list, so you can see ' +
       'everything and change nothing. Ask one of the editors above to add you.</p></section>';
 
-    return explain + '<div style="height:16px"></div>' + list + '<div style="height:16px"></div>' + addBox;
+    var backup = s.canEdit
+      ? '<div style="height:16px"></div>' +
+        '<section class="card"><div class="card-head"><h2>Backup</h2>' +
+        '<span class="hint">a copy of everything, as a file</span></div>' +
+        '<p class="note">Everything is saved in the shared database as you work. This downloads a snapshot, ' +
+        'if you want one kept off-site or taken before a big change.</p>' +
+        '<button class="btn" id="downloadData">Download a backup</button></section>'
+      : '';
+    return explain + '<div style="height:16px"></div>' + list + '<div style="height:16px"></div>' + addBox + backup;
   };
 
   views.projects = function () {
@@ -2437,12 +2484,27 @@
     var list = (state.data.updates || []).slice().sort(function (a, b) {
       return String(b.date || '').localeCompare(String(a.date || ''));
     });
-    return '<section class="card">' +
-      '<div class="card-head"><h2>Company updates</h2><a class="btn" href="#/import">Post an update</a></div>' +
+
+    var writer = canEditShared()
+      ? '<section class="card"><div class="card-head"><h2>Post an update</h2>' +
+      '<span class="hint">saves for everyone straight away</span></div>' +
+      '<div class="form-row"><label for="upTitle">Headline</label>' +
+      '<input id="upTitle" placeholder="e.g. Crab Nebula pilot signed off"></div>' +
+      '<div class="form-row"><label for="upBody">Detail</label>' +
+      '<textarea id="upBody" placeholder="What happened, what it means, what happens next."></textarea></div>' +
+      '<div class="form-row"><label for="upTag">Tag</label>' +
+      '<input id="upTag" placeholder="Sales, Build, Ops…" value="General"></div>' +
+      '<button class="btn primary" id="addUpdate">Post it</button></section>'
+      : '<section class="card"><div class="card-head"><h2>Post an update</h2></div>' +
+      '<p class="note">Sign in as an editor to post one.</p></section>';
+
+    var feed = '<section class="card"><div class="card-head"><h2>Company updates</h2>' +
+      '<span class="hint">' + list.length + ' posted</span></div>' +
       (list.length ? '<div class="timeline">' + list.map(updateRow).join('') + '</div>'
-        : '<p class="empty">Nothing posted yet. Updates you write on the <a href="#/import">Update data</a> tab appear here, ' +
-        'along with an automatic note each time a new spreadsheet is imported.</p>') +
+        : '<p class="empty">Nothing posted yet.</p>') +
       '</section>';
+
+    return '<div class="grid two">' + feed + writer + '</div>';
   };
 
   views.key = function () {
@@ -2610,211 +2672,6 @@
   }
 
   /* ---------- importer ---------- */
-  views['import'] = function () {
-    var sources = (state.data.meta && state.data.meta.sources) || {};
-    var sourceRows = Object.keys(sources).map(function (k) {
-      var s = sources[k];
-      return '<div class="list-row"><div class="lr-main"><div class="lr-title">' + esc(s.file) + '</div>' +
-        '<div class="lr-sub">' + esc((s.sections || []).join(' · ')) + '</div></div>' +
-        '<div class="lr-side">' + esc(dateLabel(s.importedAt)) + '</div></div>';
-    }).join('');
-
-    var previewBanner = state.isPreview
-      ? '<div class="banner"><span aria-hidden="true">⚠</span><div><b>You are viewing a local preview.</b> ' +
-        'These numbers are only on this computer until you download the data file and it is published. ' +
-        '<button class="btn" id="clearPreview" style="margin-top:8px">Discard preview and show published data</button></div></div>'
-      : '';
-
-    var moved = (state.pendingTargets || []).map(function (t, i) {
-      return '<div class="slip-ask"><div class="slip-ask-head"><b>' + esc(t.course) + '</b>' +
-        chip('ghost', esc(t.from) + '  →  ' + esc(t.to)) +
-        (t.owner ? '<span class="hint" data-tip="' + esc(expandInitials(t.owner)) + '">Owner: ' + esc(t.owner) + '</span>' : '') +
-        '</div>' +
-        '<div class="form-row"><label for="slipWhy' + i + '">Why has this date moved?</label>' +
-        '<input id="slipWhy' + i + '" data-slip="' + i + '" placeholder="e.g. client delayed sign-off on the script"></div>' +
-        '<div class="form-row"><label for="slipWho' + i + '">Agreed with</label>' +
-        '<input id="slipWho' + i + '" data-slipwho="' + i + '" placeholder="which director agreed the change"></div>' +
-        '</div>';
-    }).join('');
-
-    var movedPanel = moved
-      ? '<section class="card"><div class="card-head"><h2>' + state.pendingTargets.length +
-        (state.pendingTargets.length === 1 ? ' go-live date has moved' : ' go-live dates have moved') + '</h2>' +
-        '<span class="hint">recorded permanently on the Accountability page</span></div>' +
-        '<div class="banner"><span aria-hidden="true">⚠</span><div>Anything left blank is applied and logged as ' +
-        '<b>“no reason given”</b>. It is not blocked, but it is not forgotten either.</div></div>' +
-        moved + '</section><div style="height:16px"></div>'
-      : '';
-
-    var pending = state.pending
-      ? movedPanel + '<section class="card"><div class="card-head"><h2>Ready to apply</h2><span class="hint">' +
-        (canEditShared() ? 'applying saves it for everyone' : 'nothing has changed yet') + '</span></div>' +
-        '<ul class="diff">' + (state.pendingDiff.length
-          ? state.pendingDiff.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('')
-          : '<li>No differences found — the file matches what is already published.</li>') + '</ul>' +
-        '<div class="filters" style="margin:14px 0 0">' +
-        '<button class="btn primary" id="applyPending">' +
-        (canEditShared() ? 'Apply and share with everyone' : 'Apply on this device') + '</button>' +
-        '<button class="btn" id="discardPending">Discard</button>' +
-        '</div></section>'
-      : '';
-
-    return previewBanner +
-      '<div class="grid two">' +
-      '<section class="card"><div class="card-head"><h2>Upload a tracker</h2></div>' +
-      '<div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Choose spreadsheet files">' +
-      '<strong>Drop the Excel tracker here</strong>' +
-      '<small>or click to choose · .xlsx · you can drop both trackers at once</small>' +
-      '<input type="file" id="fileInput" accept=".xlsx,.xlsm" multiple hidden></div>' +
-      '<p class="hint" style="margin-top:12px">Recognised sheets: <b>Course Build Tracker</b>, <b>Projects</b>, ' +
-      '<b>Pipeline Tracker</b>, <b>Deal Stage Plans</b>, <b>Funnel Summary</b>. Anything else in the file is ignored. ' +
-      'Nothing is uploaded anywhere — the file is read inside your browser.</p>' +
-      '<div id="importStatus"></div>' +
-      '</section>' +
-
-      '<section class="card"><div class="card-head"><h2>How an update works</h2></div>' +
-      '<ol class="steps-guide">' +
-      '<li>Drop the new spreadsheet above.</li>' +
-      '<li>Check the changes it found, and say why if a go-live date has moved.</li>' +
-      '<li>Click <b>Apply</b>. ' +
-      (canEditShared()
-        ? 'It saves to the shared dashboard immediately — everyone sees it on their next load. There is nothing to publish.'
-        : 'You are not signed in as an editor, so it stays on this device until you are.') +
-      '</li>' +
-      '</ol>' +
-      '<p class="hint">The download below is only a backup of what is on screen. Nothing needs downloading ' +
-      'to share an update.</p>' +
-      '<div class="filters" style="margin:16px 0 0">' +
-      '<button class="btn" id="downloadData">Download a backup</button>' +
-      '<button class="btn" id="copyData">Copy to clipboard</button>' +
-      '</div>' +
-      '<p class="hint" style="margin-top:10px">Prefer the command line? <code>node tools/seed.js</code> rebuilds the same file from <code>source-files/</code>.</p>' +
-      '</section></div>' +
-
-      (pending ? '<div style="height:16px"></div>' + pending : '') +
-
-      '<div style="height:16px"></div><div class="grid two">' +
-      '<section class="card"><div class="card-head"><h2>Post an update</h2><span class="hint">appears on Updates + Overview</span></div>' +
-      '<div class="form-row"><label for="upTitle">Headline</label><input id="upTitle" placeholder="e.g. Crab Nebula pilot signed off"></div>' +
-      '<div class="form-row"><label for="upBody">Detail</label><textarea id="upBody" placeholder="What happened, what it means, what happens next."></textarea></div>' +
-      '<div class="form-row"><label for="upTag">Tag</label><input id="upTag" placeholder="Sales, Build, Ops…" value="General"></div>' +
-      '<button class="btn primary" id="addUpdate">Add update</button>' +
-      '<p class="hint" style="margin-top:10px">Saved into the same data file — download and publish it the same way.</p>' +
-      '</section>' +
-
-      '<section class="card"><div class="card-head"><h2>Current data sources</h2></div>' +
-      (sourceRows ? '<div class="list">' + sourceRows + '</div>' : '<p class="empty">No imports recorded yet.</p>') +
-      '</section></div>';
-  };
-
-  /* Compare two datasets and describe what changed, in plain English. */
-  function diffData(oldD, newD) {
-    var out = [];
-    function index(list, key) {
-      var m = {};
-      (list || []).forEach(function (x) { if (x[key]) m[x[key]] = x; });
-      return m;
-    }
-    var od = index(oldD.pipeline && oldD.pipeline.deals, 'client'), nd = index(newD.pipeline && newD.pipeline.deals, 'client');
-    Object.keys(nd).forEach(function (k) {
-      if (!od[k]) { out.push('New deal: ' + k + ' (' + (nd[k].stageLabel || 'unstaged') + ')'); return; }
-      if (od[k].stageNum !== nd[k].stageNum) out.push('Deal moved: ' + k + ' — ' + (od[k].stageLabel || '?') + ' → ' + (nd[k].stageLabel || '?'));
-      if ((od[k].revenue || null) !== (nd[k].revenue || null)) out.push('Revenue changed: ' + k + ' — ' + money(od[k].revenue) + ' → ' + money(nd[k].revenue));
-      if (od[k].priority !== nd[k].priority) out.push('Priority changed: ' + k + ' — ' + od[k].priority + ' → ' + nd[k].priority);
-    });
-    Object.keys(od).forEach(function (k) { if (!nd[k]) out.push('Deal removed: ' + k); });
-
-    var oc = index(oldD.courses && oldD.courses.items, 'name'), nc = index(newD.courses && newD.courses.items, 'name');
-    Object.keys(nc).forEach(function (k) {
-      if (!oc[k]) { out.push('New course: ' + k); return; }
-      if (oc[k].stagesDone !== nc[k].stagesDone) out.push('Build progress: ' + k + ' — ' + oc[k].stagesDone + '/' + oc[k].stageCount + ' → ' + nc[k].stagesDone + '/' + nc[k].stageCount + ' stages');
-      if (oc[k].target !== nc[k].target) out.push('Go-live target: ' + k + ' — ' + (oc[k].target || 'none') + ' → ' + (nc[k].target || 'none'));
-    });
-    Object.keys(oc).forEach(function (k) { if (!nc[k]) out.push('Course removed: ' + k); });
-
-    var op = index(oldD.projects && oldD.projects.items, 'name'), np = index(newD.projects && newD.projects.items, 'name');
-    Object.keys(np).forEach(function (k) {
-      if (!op[k]) { out.push('New project: ' + k); return; }
-      if (op[k].status !== np[k].status) out.push('Project status: ' + k + ' — ' + op[k].status + ' → ' + np[k].status);
-    });
-    return out;
-  }
-
-  var sheetJsPromise = null;
-  function loadScript(src) {
-    return new Promise(function (resolve, reject) {
-      var s = document.createElement('script');
-      s.src = src;
-      s.onload = resolve;
-      s.onerror = function () { reject(new Error('failed: ' + src)); };
-      document.head.appendChild(s);
-    });
-  }
-  /* The .xlsx reader ships with the site so it works offline; the CDN is only a
-     fallback for deployments where the vendor folder was not uploaded. */
-  function loadSheetJS() {
-    if (window.XLSX) return Promise.resolve(window.XLSX);
-    if (sheetJsPromise) return sheetJsPromise;
-    sheetJsPromise = loadScript('assets/vendor/xlsx.full.min.js')
-      .catch(function () { return loadScript('https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js'); })
-      .then(function () {
-        if (!window.XLSX) throw new Error('Could not load the spreadsheet reader.');
-        return window.XLSX;
-      });
-    return sheetJsPromise;
-  }
-
-  function handleFiles(files) {
-    var status = $('#importStatus');
-    if (!files || !files.length) return;
-    status.innerHTML = '<p class="hint" style="margin-top:12px">Reading…</p>';
-    loadSheetJS().then(function (XLSX) {
-      var working = JSON.parse(JSON.stringify(state.data));
-      var stamp = new Date().toISOString();
-      var messages = [], errors = [];
-      var queue = Array.prototype.slice.call(files);
-
-      function next() {
-        if (!queue.length) return finish();
-        var file = queue.shift();
-        var reader = new FileReader();
-        reader.onload = function (e) {
-          try {
-            var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-            var res = window.FideoParse.applyWorkbook(XLSX, wb, file.name, working, stamp);
-            if (res.error) errors.push(file.name + ': ' + res.error);
-            else { working = res.data; messages.push(file.name + ' → ' + res.applied.join(', ')); }
-          } catch (err) {
-            errors.push(file.name + ': ' + err.message);
-          }
-          next();
-        };
-        reader.onerror = function () { errors.push(file.name + ': could not be read.'); next(); };
-        reader.readAsArrayBuffer(file);
-      }
-
-      function finish() {
-        if (messages.length) {
-          state.pending = working;
-          state.pendingDiff = diffData(state.data, working);
-          state.pendingTargets = targetChangesBetween(state.data, working);
-        }
-        render();
-        var s = $('#importStatus');
-        if (s) {
-          s.innerHTML =
-            (messages.length ? '<div class="banner info" style="margin-top:14px"><span aria-hidden="true">✓</span><div>' +
-              messages.map(esc).join('<br>') + '</div></div>' : '') +
-            (errors.length ? '<div class="banner" style="margin-top:14px"><span aria-hidden="true">⚠</span><div>' +
-              errors.map(esc).join('<br>') + '</div></div>' : '');
-        }
-      }
-      next();
-    }).catch(function (err) {
-      status.innerHTML = '<div class="banner"><span aria-hidden="true">⚠</span><div>' + esc(err.message) + '</div></div>';
-    });
-  }
-
   function serialise(data) {
     return '/* Fideo Global dashboard data — generated ' + new Date().toISOString() + '\n' +
       '   Regenerate by uploading a tracker on the "Update data" tab, or run: node tools/seed.js */\n' +
@@ -2866,7 +2723,7 @@
 
     $('#topbarRight').innerHTML =
       (state.isPreview ? '<span class="chip amber"><span class="glyph">●</span>Local preview — not published</span>' : '') +
-      saveChip() + signInPanel() + '<a class="btn" href="#/import">Update data</a>';
+      saveChip() + signInPanel();
   }
 
   function render() {
@@ -2882,7 +2739,7 @@
     }
     var view = views[state.route] || views.overview;
     var main = $('#main');
-    main.innerHTML = recoveryPanel() + cloudBanner() + signInDialog() + unpublishedBanner() + view();
+    main.innerHTML = recoveryPanel() + slipPrompt() + cloudBanner() + signInDialog() + unpublishedBanner() + view();
     bind();
   }
 
@@ -2942,20 +2799,6 @@
         render();
       });
     });
-
-    var dz = $('#dropzone', main), fi = $('#fileInput', main);
-    if (dz && fi) {
-      dz.addEventListener('click', function () { fi.click(); });
-      dz.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fi.click(); } });
-      fi.addEventListener('change', function () { handleFiles(fi.files); });
-      ['dragenter', 'dragover'].forEach(function (evt) {
-        dz.addEventListener(evt, function (e) { e.preventDefault(); dz.classList.add('over'); });
-      });
-      ['dragleave', 'drop'].forEach(function (evt) {
-        dz.addEventListener(evt, function (e) { e.preventDefault(); dz.classList.remove('over'); });
-      });
-      dz.addEventListener('drop', function (e) { handleFiles(e.dataTransfer.files); });
-    }
 
     /* --- dragging clients up and down the priority list ---
        The arrows stay for keyboards and touch screens, where HTML5 dragging
@@ -3167,10 +3010,13 @@
 
     [['.ed-step', 'step'], ['.ed-priority', 'priority'], ['.ed-target', 'target'], ['.ed-notes', 'notes']].forEach(function (pair) {
       $$(pair[0], main).forEach(function (el) {
+        var was = el.value;
         el.addEventListener('change', function () {
           var patch = {};
           patch[pair[1]] = el.value;
-          setOvr('deals', el.getAttribute('data-client'), patch);
+          var client = el.getAttribute('data-client');
+          if (pair[1] === 'target') noteTargetChange('deal', client, was, el.value, '');
+          setOvr('deals', client, patch);
           render();
         });
       });
@@ -3201,10 +3047,16 @@
     });
     [['.ec-priority', 'priority'], ['.ec-target', 'target'], ['.ec-owner', 'owner'], ['.ec-notes', 'notes']].forEach(function (pair) {
       $$(pair[0], main).forEach(function (el) {
+        var was = el.value;
         el.addEventListener('change', function () {
           var patch = {};
           patch[pair[1]] = el.value;
-          setOvr('courses', el.getAttribute('data-course-name'), patch);
+          var cname = el.getAttribute('data-course-name');
+          if (pair[1] === 'target') {
+            var cc = allCourses().filter(function (x) { return x.name === cname; })[0];
+            noteTargetChange('course', cname, was, el.value, cc ? cc.owner : '');
+          }
+          setOvr('courses', cname, patch);
           render();
         });
       });
@@ -3252,38 +3104,11 @@
       render();
     });
 
-    on('#applyPending', 'click', function () {
-      var data = state.pending;
-      if (!data) return;
-      data.updates = data.updates || [];
-      var summary = state.pendingDiff.slice(0, 12).join('\n') + (state.pendingDiff.length > 12 ? '\n…and ' + (state.pendingDiff.length - 12) + ' more changes.' : '');
-      data.updates.unshift({
-        date: new Date().toISOString().slice(0, 10),
-        title: 'Trackers refreshed',
-        tag: 'Data',
-        body: state.pendingDiff.length ? summary : 'Spreadsheets re-imported with no material changes.'
-      });
-
-      /* log every moved go-live date, with whatever explanation was given */
-      var stamp = new Date().toISOString().slice(0, 10);
-      data.history = data.history || { slips: [] };
-      (state.pendingTargets || []).forEach(function (t, i) {
-        var why = $('#slipWhy' + i), who = $('#slipWho' + i);
-        data.history.slips.push({
-          date: stamp, course: t.course, from: t.from, to: t.to, owner: t.owner,
-          reason: why ? why.value.trim() : '', agreedBy: who ? who.value.trim() : ''
-        });
-      });
-      state.pendingTargets = [];
-      savePreview(data);
-      state.pending = null; state.pendingDiff = [];
-      location.hash = '#/overview';
-      render();
-    });
-    on('#discardPending', 'click', function () { state.pending = null; state.pendingDiff = []; state.pendingTargets = []; render(); });
     on('#clearPreview', 'click', function () {
       if (confirm('Discard the local preview and go back to the published data?')) { clearPreview(); render(); }
     });
+    on('#saveSlip', 'click', function () { recordSlip($('#slipReason').value.trim(), $('#slipAgreed').value.trim()); });
+    on('#skipSlip', 'click', function () { recordSlip('', ''); });
     on('#downloadData', 'click', function () { download('dashboard.js', serialise(state.data)); });
     on('#copyData', 'click', function () {
       navigator.clipboard.writeText(serialise(state.data)).then(function () {
