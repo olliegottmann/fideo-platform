@@ -1447,13 +1447,26 @@
         '<button class="btn btn-sm" id="discardLocal">Discard</button></div></div>';
     }
     if (!state.isPreview) return '';
+    if (cloudOnline() && canEditShared()) return '';
     var u = unpublishedSummary();
     if (!u.count) return '';
+
+    var c = cloud();
+    var why, fix;
+    if (!c || !c.state.online) {
+      why = 'The shared dashboard cannot be reached, so this is saved on this device only.';
+      fix = '<button class="btn btn-sm" id="reloadShared">Try again</button>';
+    } else if (!c.state.user) {
+      why = 'You are not signed in, so this is saved on this device only and nobody else can see it.';
+      fix = '<button class="btn btn-sm" id="openSignIn">Sign in to share it</button>';
+    } else {
+      why = 'You are signed in but not on the editors list, so this is saved on this device only.';
+      fix = '<a class="btn btn-sm" href="#/access">Who can edit</a>';
+    }
     return '<div class="banner unpublished"><span aria-hidden="true">⚠</span><div>' +
-      '<b>Changes on this device only.</b> ' + esc(u.parts.join(', ')) + ' edited here' +
-      (u.at ? ' — last change ' + esc(dateLabel(u.at)) : '') + '. ' +
-      'Nobody else can see any of it until it is published. ' +
-      '<a href="#/import">Publish these changes</a></div></div>';
+      '<b>Not saved to the shared dashboard.</b> ' + esc(why) + ' ' +
+      esc(u.parts.join(', ')) + ' changed here' + (u.at ? ', last edit ' + esc(dateLabel(u.at)) : '') + '. ' +
+      fix + '</div></div>';
   }
 
   function stampLine() {
@@ -2634,12 +2647,14 @@
       : '';
 
     var pending = state.pending
-      ? movedPanel + '<section class="card"><div class="card-head"><h2>Ready to apply</h2><span class="hint">nothing has changed yet</span></div>' +
+      ? movedPanel + '<section class="card"><div class="card-head"><h2>Ready to apply</h2><span class="hint">' +
+        (canEditShared() ? 'applying saves it for everyone' : 'nothing has changed yet') + '</span></div>' +
         '<ul class="diff">' + (state.pendingDiff.length
           ? state.pendingDiff.map(function (d) { return '<li>' + esc(d) + '</li>'; }).join('')
           : '<li>No differences found — the file matches what is already published.</li>') + '</ul>' +
         '<div class="filters" style="margin:14px 0 0">' +
-        '<button class="btn primary" id="applyPending">Apply and preview</button>' +
+        '<button class="btn primary" id="applyPending">' +
+        (canEditShared() ? 'Apply and share with everyone' : 'Apply on this device') + '</button>' +
         '<button class="btn" id="discardPending">Discard</button>' +
         '</div></section>'
       : '';
@@ -2657,15 +2672,20 @@
       '<div id="importStatus"></div>' +
       '</section>' +
 
-      '<section class="card"><div class="card-head"><h2>How to publish an update</h2></div>' +
+      '<section class="card"><div class="card-head"><h2>How an update works</h2></div>' +
       '<ol class="steps-guide">' +
-      '<li>Drop the new spreadsheet above and check the list of changes.</li>' +
-      '<li>Click <b>Apply and preview</b> — the whole dashboard now shows the new numbers, on your machine only.</li>' +
-      '<li>Click <b>Download data file</b> and save it as <code>data/dashboard.js</code> in the project folder.</li>' +
-      '<li>Commit and push that one file. Vercel redeploys in about a minute and everyone sees it.</li>' +
+      '<li>Drop the new spreadsheet above.</li>' +
+      '<li>Check the changes it found, and say why if a go-live date has moved.</li>' +
+      '<li>Click <b>Apply</b>. ' +
+      (canEditShared()
+        ? 'It saves to the shared dashboard immediately — everyone sees it on their next load. There is nothing to publish.'
+        : 'You are not signed in as an editor, so it stays on this device until you are.') +
+      '</li>' +
       '</ol>' +
+      '<p class="hint">The download below is only a backup of what is on screen. Nothing needs downloading ' +
+      'to share an update.</p>' +
       '<div class="filters" style="margin:16px 0 0">' +
-      '<button class="btn amber" id="downloadData">Download data file</button>' +
+      '<button class="btn" id="downloadData">Download a backup</button>' +
       '<button class="btn" id="copyData">Copy to clipboard</button>' +
       '</div>' +
       '<p class="hint" style="margin-top:10px">Prefer the command line? <code>node tools/seed.js</code> rebuilds the same file from <code>source-files/</code>.</p>' +
