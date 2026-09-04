@@ -1444,53 +1444,10 @@
 
   /* Sits above every page while there is unpublished work, because the whole
      failure mode is somebody editing for an afternoon and nobody else seeing it. */
-  function describeData(d) {
-    if (!d) return '';
-    var parts = [];
-    var courses = ((d.courses || {}).items || []).length;
-    var deals = ((d.pipeline || {}).deals || []).length;
-    var stageEdits = 0;
-    Object.keys(d.stagePlans || {}).forEach(function (c) {
-      Object.keys(d.stagePlans[c] || {}).forEach(function (i) {
-        var cell = d.stagePlans[c][i] || {};
-        if (cell.due || cell.who || cell.status) stageEdits++;
-      });
-    });
-    var courseEdits = Object.keys(((d.overrides || {}).courses) || {}).length;
-    var clientEdits = Object.keys(((d.overrides || {}).deals) || {}).length;
-    if (courses) parts.push(courses + ' courses');
-    if (deals) parts.push(deals + ' clients');
-    if (stageEdits) parts.push(stageEdits + ' stage entries');
-    if (courseEdits) parts.push(courseEdits + ' course edits');
-    if (clientEdits) parts.push(clientEdits + ' client edits');
-    return parts.join(', ');
-  }
-
   function unpublishedBanner() {
     /* Work done on this device before the shared database existed. The shared
        copy now takes precedence on screen, so this offers it back rather than
        letting it quietly disappear. */
-    if (!state.isPreview && state.pendingLocal) {
-      var when = state.pendingLocal.meta && state.pendingLocal.meta.locallyEditedAt;
-      var c = cloud();
-      var sharedWhen = c && c.state.updatedAt ? dateLabel(c.state.updatedAt) : 'unknown';
-      var sharedWho = c && c.state.updatedBy ? c.state.updatedBy : 'someone else';
-      var newer = when && c && c.state.updatedAt && new Date(when) > new Date(c.state.updatedAt);
-
-      return '<div class="banner unpublished"><span aria-hidden="true">⚠</span><div>' +
-        '<b>This device holds changes that were never shared</b>' +
-        (when ? ', last edited ' + esc(dateLabel(when)) : '') + '. ' +
-        (newer ? 'They are <b>newer</b> than the shared copy, which ' : 'The shared copy ') +
-        'was last saved by ' + esc(sharedWho) + ' on ' + esc(sharedWhen) + '.' +
-        '<div class="hint" style="margin:6px 0 0">On this device: ' + esc(describeData(state.pendingLocal)) +
-        ' · Shared: ' + esc(describeData(state.data)) + '</div>' +
-        '<p class="hint" style="margin:8px 0 0">The shared copy stands. These changes cannot be pushed over ' +
-        'the top of it — redo anything still needed, on top of what everyone else can see.</p>' +
-        '<div class="filters" style="margin:10px 0 0">' +
-        '<button class="btn btn-sm" id="downloadLocal">Download a copy to read</button>' +
-        '<button class="btn btn-sm" id="discardLocal">Discard</button>' +
-        '</div></div></div>';
-    }
     if (!state.isPreview) return '';
     if (cloudOnline() && canEditShared()) return '';
     var u = unpublishedSummary();
@@ -3072,67 +3029,6 @@
       });
     })();
 
-    on('#downloadLocal', 'click', function () {
-      if (state.pendingLocal) download('dashboard-unpublished-local.js', serialise(state.pendingLocal));
-    });
-    on('#discardLocal', 'click', function () {
-      if (!confirm('Discard the unshared changes on this device? Download them first if they matter.')) return;
-      try { localStorage.removeItem(PREVIEW_KEY); } catch (err) { /* ignore */ }
-      state.pendingLocal = null;
-      render();
-    });
-    on('#addEditor', 'click', function () {
-      var email = $('#newEditorEmail').value.trim();
-      var note = $('#newEditorNote').value.trim();
-      if (!email || email.indexOf('@') === -1) { state.accessMessage = 'Enter a valid email address.'; render(); return; }
-      state.accessMessage = 'Adding…'; render();
-      cloud().addEditor(email, note).then(function (res) {
-        state.accessMessage = res.ok ? email + ' can now edit, once they sign in.' : res.message;
-        state.editors = null;
-        render();
-      });
-    });
-    $$('[data-remove-editor]', main).forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var email = btn.getAttribute('data-remove-editor');
-        var you = cloud().state.user && cloud().state.user.email;
-        var warn = String(email).toLowerCase() === String(you).toLowerCase()
-          ? 'Remove your own editing rights? You will be read-only until another editor adds you back.'
-          : 'Remove editing rights from ' + email + '? They keep read access like everyone else.';
-        if (!confirm(warn)) return;
-        cloud().removeEditor(email).then(function (res) {
-          state.accessMessage = res.ok ? email + ' is now read-only.' : res.message;
-          state.editors = null;
-          if (res.ok) cloud().refreshPermission();
-          render();
-        });
-      });
-    });
-    on('#forgotPass', 'click', function () {
-      var email = $('#siEmail').value.trim();
-      if (!email) { state.signInMessage = 'Type your email address first, then click Forgot password.'; render(); return; }
-      state.signInMessage = 'Sending...'; render();
-      cloud().resetPassword(email).then(function (res) {
-        state.signInMessage = res.ok
-          ? 'If ' + email + ' has an account, a reset link is on its way. Open it on this device and you will be asked to set a new password.'
-          : res.message;
-        render();
-      });
-    });
-    on('#saveNewPass', 'click', function () {
-      var pw = $('#newPass').value;
-      if (!pw || pw.length < 6) { state.recoveryMessage = 'Use at least six characters.'; render(); return; }
-      state.recoveryMessage = 'Saving...'; render();
-      cloud().updatePassword(pw).then(function (res) {
-        state.recoveryMessage = res.ok ? null : res.message;
-        if (res.ok) {
-          state.showSignIn = false;
-          if (location.hash.indexOf('type=recovery') !== -1) location.hash = '#/overview';
-        }
-        render();
-        renderChrome();
-      });
-    });
     on('#openSignIn', 'click', function () { state.showSignIn = true; state.signInMessage = null; render(); });
     on('#cancelSignIn', 'click', function () { state.showSignIn = false; render(); });
     on('#signOut', 'click', function () {
@@ -3478,8 +3374,10 @@
         state.isPreview = false;
         /* Local work from before the database existed is kept, not thrown away:
            it stays on the device and the banner keeps asking for it to be published. */
-        if (localPreview && localPreview.meta && localPreview.meta.locallyEditedAt) {
-          state.pendingLocal = localPreview;
+        /* The shared copy is the truth, so anything left on this device from an
+           earlier session is cleared rather than kept and complained about. */
+        if (localPreview) {
+          try { localStorage.removeItem(PREVIEW_KEY); } catch (err) { /* ignore */ }
         }
       }
       render();
