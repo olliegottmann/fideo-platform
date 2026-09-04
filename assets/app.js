@@ -238,6 +238,19 @@
       '</div></div>';
   }
 
+  function flash(kind, text) {
+    state.flash = { kind: kind, text: text };
+  }
+
+  function flashBanner() {
+    if (!state.flash) return '';
+    var f = state.flash;
+    var cls = f.kind === 'bad' ? 'banner' : 'banner info';
+    return '<div class="' + cls + '"><span aria-hidden="true">' +
+      (f.kind === 'bad' ? '&#9888;' : '&#10003;') + '</span><div style="flex:1">' + esc(f.text) + '</div>' +
+      '<button class="btn btn-sm" id="dismissFlash">Dismiss</button></div>';
+  }
+
   function recoveryPanel() {
     var c = cloud();
     if (!c || (!c.state.recovery && !state.changingPassword)) return '';
@@ -2918,7 +2931,7 @@
     }
     var view = views[state.route] || views.overview;
     var main = $('#main');
-    main.innerHTML = recoveryPanel() + slipPrompt() + cloudBanner() + signInDialog() + unpublishedBanner() + view();
+    main.innerHTML = flashBanner() + recoveryPanel() + slipPrompt() + cloudBanner() + signInDialog() + unpublishedBanner() + view();
     bind();
   }
 
@@ -3079,7 +3092,8 @@
         if (res.ok) {
           state.showSignIn = false;
           state.changingPassword = false;
-          state.recoveryMessage = 'Password changed.';
+          state.recoveryMessage = null;
+          flash('good', 'Password changed. Use it next time you sign in.');
           if (location.hash.indexOf('type=recovery') !== -1) location.hash = '#/overview';
         }
         render();
@@ -3089,18 +3103,33 @@
     on('#openSignIn', 'click', function () { state.showSignIn = true; state.signInMessage = null; render(); });
     on('#cancelSignIn', 'click', function () { state.showSignIn = false; render(); });
     on('#signOut', 'click', function () {
-      cloud().signOut().then(function () { state.signInMessage = null; render(); renderChrome(); });
+      cloud().signOut().then(function () {
+        state.signInMessage = null;
+        flash('good', 'Signed out. You can still read everything; editing needs a sign-in.');
+        render();
+        renderChrome();
+      });
     });
+    on('#dismissFlash', 'click', function () { state.flash = null; render(); });
     on('#reloadShared', 'click', function () { location.reload(); });
     on('#doSignIn', 'click', function () {
       var email = $('#siEmail').value.trim(), pass = $('#siPass').value;
       if (!email || !pass) { state.signInMessage = 'Enter an email and password.'; render(); return; }
       state.signInMessage = 'Signing in…'; render();
       cloud().signIn(email, pass).then(function (res) {
-        if (!res.ok) { state.signInMessage = res.message; render(); return; }
+        if (!res.ok) {
+          state.signInMessage = res.message === 'Invalid login credentials'
+            ? 'That email and password do not match an account. Check the address, or use Forgot password.'
+            : res.message;
+          render();
+          return;
+        }
         state.signInMessage = null;
         state.showSignIn = false;
         state.saveError = null;
+        flash('good', res.canEdit
+          ? 'Signed in as ' + res.email + '. You can edit, and your changes save for everyone.'
+          : 'Signed in as ' + res.email + ', but this address is not on the editors list, so everything is read only.');
         cloud().load().then(function (shared) {
           if (shared && shared.meta) {
             state.data = shared;
@@ -3120,6 +3149,7 @@
       if (!email || !pass) { state.signInMessage = 'Enter an email and a password of at least six characters.'; render(); return; }
       state.signInMessage = 'Creating the account…'; render();
       cloud().signUp(email, pass).then(function (res) {
+        if (res.ok && !res.needsConfirmation) flash('good', 'Account created and signed in as ' + email + '.');
         state.signInMessage = res.ok
           ? (res.needsConfirmation
             ? 'You are not signed in yet. If this address is new, check ' + email +
