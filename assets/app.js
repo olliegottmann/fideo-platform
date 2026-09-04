@@ -1444,18 +1444,53 @@
 
   /* Sits above every page while there is unpublished work, because the whole
      failure mode is somebody editing for an afternoon and nobody else seeing it. */
+  function describeData(d) {
+    if (!d) return '';
+    var parts = [];
+    var courses = ((d.courses || {}).items || []).length;
+    var deals = ((d.pipeline || {}).deals || []).length;
+    var stageEdits = 0;
+    Object.keys(d.stagePlans || {}).forEach(function (c) {
+      Object.keys(d.stagePlans[c] || {}).forEach(function (i) {
+        var cell = d.stagePlans[c][i] || {};
+        if (cell.due || cell.who || cell.status) stageEdits++;
+      });
+    });
+    var courseEdits = Object.keys(((d.overrides || {}).courses) || {}).length;
+    var clientEdits = Object.keys(((d.overrides || {}).deals) || {}).length;
+    if (courses) parts.push(courses + ' courses');
+    if (deals) parts.push(deals + ' clients');
+    if (stageEdits) parts.push(stageEdits + ' stage entries');
+    if (courseEdits) parts.push(courseEdits + ' course edits');
+    if (clientEdits) parts.push(clientEdits + ' client edits');
+    return parts.join(', ');
+  }
+
   function unpublishedBanner() {
     /* Work done on this device before the shared database existed. The shared
        copy now takes precedence on screen, so this offers it back rather than
        letting it quietly disappear. */
     if (!state.isPreview && state.pendingLocal) {
       var when = state.pendingLocal.meta && state.pendingLocal.meta.locallyEditedAt;
+      var c = cloud();
+      var sharedWhen = c && c.state.updatedAt ? dateLabel(c.state.updatedAt) : 'unknown';
+      var sharedWho = c && c.state.updatedBy ? c.state.updatedBy : 'someone else';
+      var newer = when && c && c.state.updatedAt && new Date(when) > new Date(c.state.updatedAt);
+
       return '<div class="banner unpublished"><span aria-hidden="true">⚠</span><div>' +
-        '<b>This device has older changes that were never shared</b>' +
+        '<b>This device holds changes that were never shared</b>' +
         (when ? ', last edited ' + esc(dateLabel(when)) : '') + '. ' +
-        'They are not part of what everyone else sees. ' +
-        '<button class="btn btn-sm" id="downloadLocal">Download them</button> ' +
-        '<button class="btn btn-sm" id="discardLocal">Discard</button></div></div>';
+        (newer ? 'They are <b>newer</b> than the shared copy, which ' : 'The shared copy ') +
+        'was last saved by ' + esc(sharedWho) + ' on ' + esc(sharedWhen) + '.' +
+        '<div class="hint" style="margin:6px 0 0">On this device: ' + esc(describeData(state.pendingLocal)) +
+        ' · Shared: ' + esc(describeData(state.data)) + '</div>' +
+        '<div class="filters" style="margin:10px 0 0">' +
+        (canEditShared()
+          ? '<button class="btn primary btn-sm" id="shareLocal">Make these the shared copy</button>'
+          : '<span class="hint">Sign in as an editor to share them.</span>') +
+        '<button class="btn btn-sm" id="downloadLocal">Download a copy</button>' +
+        '<button class="btn btn-sm" id="discardLocal">Discard</button>' +
+        '</div></div></div>';
     }
     if (!state.isPreview) return '';
     if (cloudOnline() && canEditShared()) return '';
@@ -3038,6 +3073,18 @@
       });
     })();
 
+    on('#shareLocal', 'click', function () {
+      var c = cloud();
+      var who = (c && c.state.updatedBy) || 'someone else';
+      var when = c && c.state.updatedAt ? dateLabel(c.state.updatedAt) : 'unknown';
+      if (!confirm('Make this device\'s version the shared one?\n\nIt replaces the copy last saved by ' +
+        who + ' on ' + when + '. Anything they changed after this device last saved will be overwritten.')) return;
+      var mine = state.pendingLocal;
+      state.pendingLocal = null;
+      state.data = mine;
+      savePreview(mine);
+      render();
+    });
     on('#downloadLocal', 'click', function () {
       if (state.pendingLocal) download('dashboard-unpublished-local.js', serialise(state.pendingLocal));
     });
