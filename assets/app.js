@@ -216,6 +216,7 @@
     return '<span class="chip ' + (s.canEdit ? 'done' : 'risk') + '" data-tip="' +
       esc(s.canEdit ? 'On the editors list' : 'Signed in, but not on the editors list — see the Access page') + '">' +
       esc(s.user.email) + (s.canEdit ? ' · can edit' : ' · read only') + '</span>' +
+      '<button class="btn btn-sm" id="changePass">Change password</button>' +
       '<button class="btn btn-sm" id="signOut">Sign out</button>';
   }
 
@@ -239,7 +240,7 @@
 
   function recoveryPanel() {
     var c = cloud();
-    if (!c || !c.state.recovery) return '';
+    if (!c || (!c.state.recovery && !state.changingPassword)) return '';
     return '<div class="banner info"><span aria-hidden="true">&#128273;</span><div style="flex:1">' +
       '<b>Set a new password</b>' +
       '<div class="filters" style="margin:10px 0 0">' +
@@ -3029,6 +3030,62 @@
       });
     })();
 
+    $$('[data-remove-editor]', main).forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var email = btn.getAttribute('data-remove-editor');
+        var you = cloud().state.user && cloud().state.user.email;
+        var warn = String(email).toLowerCase() === String(you).toLowerCase()
+          ? 'Remove your own editing rights? You will be read-only until another editor adds you back.'
+          : 'Remove editing rights from ' + email + '? They keep read access like everyone else.';
+        if (!confirm(warn)) return;
+        cloud().removeEditor(email).then(function (res) {
+          state.accessMessage = res.ok ? email + ' is now read-only.' : res.message;
+          state.editors = null;
+          if (res.ok) cloud().refreshPermission();
+          render();
+        });
+      });
+    });
+    on('#addEditor', 'click', function () {
+      var email = (($('#newEditorEmail') || {}).value || '').trim();
+      var note = (($('#newEditorNote') || {}).value || '').trim();
+      if (!email || email.indexOf('@') === -1) { state.accessMessage = 'Enter a valid email address.'; render(); return; }
+      state.accessMessage = 'Adding...'; render();
+      cloud().addEditor(email, note).then(function (res) {
+        state.accessMessage = res.ok ? email + ' can edit once they sign in.' : res.message;
+        state.editors = null;
+        render();
+      });
+    });
+    on('#changePass', 'click', function () { state.changingPassword = true; render(); });
+    on('#forgotPass', 'click', function () {
+      var email = ($('#siEmail') || {}).value;
+      email = (email || '').trim();
+      if (!email) { state.signInMessage = 'Type your email address first, then click Forgot password.'; render(); return; }
+      state.signInMessage = 'Sending...'; render();
+      cloud().resetPassword(email).then(function (res) {
+        state.signInMessage = res.ok
+          ? 'If ' + email + ' has an account, a reset link is on its way. Open it on this device and you will be asked to set a new password.'
+          : res.message;
+        render();
+      });
+    });
+    on('#saveNewPass', 'click', function () {
+      var pw = ($('#newPass') || {}).value;
+      if (!pw || pw.length < 6) { state.recoveryMessage = 'Use at least six characters.'; render(); return; }
+      state.recoveryMessage = 'Saving...'; render();
+      cloud().updatePassword(pw).then(function (res) {
+        state.recoveryMessage = res.ok ? null : res.message;
+        if (res.ok) {
+          state.showSignIn = false;
+          state.changingPassword = false;
+          state.recoveryMessage = 'Password changed.';
+          if (location.hash.indexOf('type=recovery') !== -1) location.hash = '#/overview';
+        }
+        render();
+        renderChrome();
+      });
+    });
     on('#openSignIn', 'click', function () { state.showSignIn = true; state.signInMessage = null; render(); });
     on('#cancelSignIn', 'click', function () { state.showSignIn = false; render(); });
     on('#signOut', 'click', function () {
