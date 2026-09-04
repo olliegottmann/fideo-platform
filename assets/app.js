@@ -179,9 +179,9 @@
         state.isPreview = false;
         try { localStorage.removeItem(PREVIEW_KEY); } catch (err) { /* ignore */ }
       } else if (res.reason === 'stale') {
-        state.saveError = (res.updatedBy ? res.updatedBy : 'Somebody else') +
-          ' saved a change while this page was open, so this edit was not sent — ' +
-          'reloading will show their version, and you can redo yours on top.';
+        state.saveError = (res.updatedBy ? res.updatedBy : 'Someone') +
+          ' saved a change while this page was open. Their version stands and this edit was not sent. ' +
+          'Reload to see theirs, then redo yours on top.';
       } else if (res.reason === 'not-an-editor') {
         state.saveError = 'You are signed in but not on the editors list, so this stayed on your device.';
       } else {
@@ -1484,11 +1484,10 @@
         'was last saved by ' + esc(sharedWho) + ' on ' + esc(sharedWhen) + '.' +
         '<div class="hint" style="margin:6px 0 0">On this device: ' + esc(describeData(state.pendingLocal)) +
         ' · Shared: ' + esc(describeData(state.data)) + '</div>' +
+        '<p class="hint" style="margin:8px 0 0">The shared copy stands. These changes cannot be pushed over ' +
+        'the top of it — redo anything still needed, on top of what everyone else can see.</p>' +
         '<div class="filters" style="margin:10px 0 0">' +
-        (canEditShared()
-          ? '<button class="btn primary btn-sm" id="shareLocal">Make these the shared copy</button>'
-          : '<span class="hint">Sign in as an editor to share them.</span>') +
-        '<button class="btn btn-sm" id="downloadLocal">Download a copy</button>' +
+        '<button class="btn btn-sm" id="downloadLocal">Download a copy to read</button>' +
         '<button class="btn btn-sm" id="discardLocal">Discard</button>' +
         '</div></div></div>';
     }
@@ -3073,18 +3072,6 @@
       });
     })();
 
-    on('#shareLocal', 'click', function () {
-      var c = cloud();
-      var who = (c && c.state.updatedBy) || 'someone else';
-      var when = c && c.state.updatedAt ? dateLabel(c.state.updatedAt) : 'unknown';
-      if (!confirm('Make this device\'s version the shared one?\n\nIt replaces the copy last saved by ' +
-        who + ' on ' + when + '. Anything they changed after this device last saved will be overwritten.')) return;
-      var mine = state.pendingLocal;
-      state.pendingLocal = null;
-      state.data = mine;
-      savePreview(mine);
-      render();
-    });
     on('#downloadLocal', 'click', function () {
       if (state.pendingLocal) download('dashboard-unpublished-local.js', serialise(state.pendingLocal));
     });

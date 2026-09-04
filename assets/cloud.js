@@ -119,12 +119,12 @@
       .then(function (res) {
         var remote = res && res.data ? res.data.updated_at : null;
         var remoteBy = res && res.data ? res.data.updated_by : null;
-        var mine = String(remoteBy || '').toLowerCase() ===
-                   String((state.user && state.user.email) || '').toLowerCase();
-
-        /* Only stop for a write from somebody else. Our own last write, or one
-           from another of our own tabs, is not a reason to lose this edit. */
-        if (remote && state.updatedAt && remote !== state.updatedAt && !mine) {
+        /* Whatever is in the database stands. If the row has moved since this
+           page read it - another person, another tab, another device - this save
+           is refused rather than written over the top. Saves are queued, so a
+           run of quick edits from this page cannot trip over itself and end up
+           here. */
+        if (remote && state.updatedAt && remote !== state.updatedAt) {
           return { ok: false, reason: 'stale', updatedAt: remote, updatedBy: remoteBy };
         }
         return c.from(CONFIG.table)
